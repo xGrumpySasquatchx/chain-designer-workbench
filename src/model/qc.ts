@@ -1,4 +1,5 @@
 import { bbDef, ch3Role, chainTarget, symmetry } from './bioglyph';
+import { armsNeedingLight, lightChainMode, moleculeReadiness } from './molecule';
 import { PART_LABELS, PART_LINEAGE } from './parts';
 import {
   insertLengthBp,
@@ -77,16 +78,23 @@ export function runFormatQc(
     });
   }
 
-  const sharedLight = left.lightChainId && left.lightChainId === right.lightChainId;
-  const bothNeedLight = bbDef(left.bb).needsLightChain && bbDef(right.bb).needsLightChain;
-  if (bothNeedLight) {
+  // The light chain decision, reported rather than assumed: an arm that needs one
+  // and has none is unfinished, a shared one removes mispairing, and one per arm
+  // is a legitimate choice that leaves mispairing to solve another way.
+  const needLight = armsNeedingLight(format);
+  if (needLight.length) {
+    const mode = lightChainMode(format);
+    const named = (id: string | null) => (id ? (chains[id]?.name ?? id) : 'none');
     checks.push({
       id: 'light-pairing',
-      label: 'Light chain pairing',
-      status: sharedLight ? 'pass' : 'warn',
-      detail: sharedLight
-        ? 'Common light chain on both arms — no light-chain mispairing to resolve.'
-        : 'Two different light chains can mispair; consider a common light chain or an orthogonal Fab interface.',
+      label: 'Light chain',
+      status: mode === 'unset' ? 'warn' : mode === 'common' ? 'pass' : 'warn',
+      detail:
+        mode === 'unset'
+          ? `${needLight.map((a) => `the ${a} arm`).join(' and ')} need a light chain: choose a common one for both arms, or one each.`
+          : mode === 'common'
+            ? `Common light chain on both arms (${named(left.lightChainId)}), so there is no light-chain mispairing to resolve.`
+            : `One light chain per arm (${named(left.lightChainId)} and ${named(right.lightChainId)}); two different light chains can mispair unless the Fab interfaces are made orthogonal.`,
     });
   }
 
@@ -97,6 +105,19 @@ export function runFormatQc(
     detail: format.formatId
       ? `${format.formatId} — ${registry.formats[format.formatId]?.name ?? ''}`
       : 'This format has no identifier yet. Registering reuses an existing ID if the format already exists.',
+  });
+
+  const readiness = moleculeReadiness(format, chains);
+  const molecule = format.moleculeId ? registry.molecules[format.moleculeId] : undefined;
+  checks.push({
+    id: 'molecule',
+    label: 'Molecule registered',
+    status: molecule ? 'pass' : 'warn',
+    detail: molecule
+      ? `${molecule.id} — ${molecule.name}, built from ${molecule.regIds.join(', ')}`
+      : readiness.ready
+        ? 'Every chain is registered, so this molecule can be registered and given a MOL-id.'
+        : `Still to register: ${readiness.unregistered.map((c) => c.name).join(', ') || 'no chains on the arms yet'}.`,
   });
 
   const targets = [chainTarget(left.heavyChainId ? chains[left.heavyChainId] : undefined, registry),
@@ -203,13 +224,15 @@ export function runQc(chain: ChainDesign, registry: Registry): QcResult {
       (n, s) => n + (s.blockIds[0] ? (registry.blocks[s.blockIds[0]]?.lengthBp ?? 0) : 0),
       0,
     );
+  // Nothing to code for is a failure, not a warning: a chain with an empty insert
+  // would otherwise assemble and register, minting identifiers for nothing.
   checks.push({
     id: 'frame',
     label: 'Coding sequence in frame',
-    status: codingLength === 0 ? 'warn' : codingLength % 3 === 0 ? 'pass' : 'fail',
+    status: codingLength === 0 ? 'fail' : codingLength % 3 === 0 ? 'pass' : 'fail',
     detail:
       codingLength === 0
-        ? 'No coding regions selected yet.'
+        ? 'No coding regions selected yet, so this chain has nothing to express.'
         : `${codingLength.toLocaleString()} bp, ${codingLength % 3 === 0 ? 'divisible by 3' : `${codingLength % 3} bp out of frame`}`,
   });
 

@@ -36,6 +36,7 @@ import {
   textOn,
   truncate,
 } from '../src/model/mapview';
+import { lightChainMode, moleculeReadiness } from '../src/model/molecule';
 import { inAlphabet, lengthIn } from '../src/model/parts';
 import { runFormatQc, runQc } from '../src/model/qc';
 import { createInitialState, reducer, type Action, type AppState } from '../src/state/store';
@@ -240,8 +241,10 @@ check(
 console.log('\n— design pad drives the bench —');
 let pad = createInitialState();
 check(
-  'seeded format is a 1+1 bispecific with a common light chain',
-  pad.format.arms.left.lightChainId === pad.format.arms.right.lightChainId,
+  'the seeded format has a Fab on each arm and no light chain bound',
+  pad.format.arms.left.bb === 'fab' &&
+    pad.format.arms.right.bb === 'fab' &&
+    lightChainMode(pad.format) === 'unset',
 );
 pad = run(
   pad,
@@ -321,6 +324,182 @@ check(
   runFormatQc(hetero.format, hetero.chains, hetero.registry).checks.find(
     (c) => c.id === 'knob-hole',
   )?.status === 'pass',
+);
+
+console.log('\n— an empty chain cannot be registered —');
+// An arm block with no variable domain leaves its chain nothing to express, and
+// the backbone alone must not be registrable as a chain.
+const hollow = run(
+  createInitialState(),
+  { type: 'set-arm-bb', arm: 'right', bb: 'fc' },
+  { type: 'set-vector', chainId: HEAVY_B, vectorId: 'VEC-0001' },
+);
+check(
+  'a chain with no coding regions fails QC',
+  runQc(hollow.chains[HEAVY_B], hollow.registry).status === 'fail',
+);
+check(
+  'so it never reaches inventory',
+  run(hollow, { type: 'assemble', chainId: HEAVY_B }, { type: 'register', chainId: HEAVY_B }).chains[
+    HEAVY_B
+  ].regIds.length === 0,
+);
+
+console.log('\n— the light chain is a choice, not a default —');
+const fresh = createInitialState();
+check(
+  'a Fab arm starts unpaired, so nothing is assumed',
+  !fresh.format.arms.left.lightChainId && !fresh.format.arms.right.lightChainId,
+);
+check(
+  'format QC asks for the choice instead of making it',
+  runFormatQc(fresh.format, fresh.chains, fresh.registry).checks.find(
+    (c) => c.id === 'light-pairing',
+  )?.status === 'warn',
+);
+check(
+  'placing a Fab on an arm does not adopt a light chain',
+  !run(fresh, { type: 'set-arm-bb', arm: 'right', bb: 'fab' }).format.arms.right.lightChainId,
+);
+
+const common = run(fresh, { type: 'choose-light-chain', mode: 'common', chainId: LIGHT });
+check(
+  'choosing a common light chain pairs both arms with it',
+  lightChainMode(common.format) === 'common' && common.format.arms.right.lightChainId === LIGHT,
+);
+check(
+  'a common light chain passes the pairing check',
+  runFormatQc(common.format, common.chains, common.registry).checks.find(
+    (c) => c.id === 'light-pairing',
+  )?.status === 'pass',
+);
+
+const perArm = run(common, { type: 'choose-light-chain', mode: 'per-arm' });
+check(
+  'one per arm keeps the first arm and mints a light chain for the other',
+  perArm.format.arms.left.lightChainId === LIGHT &&
+    perArm.format.arms.right.lightChainId !== LIGHT,
+  perArm.format.arms.right.lightChainId ?? '',
+);
+const mintedLight = perArm.format.arms.right.lightChainId ?? '';
+check(
+  'the minted light chain has its own CH-id and reaches the bench',
+  /^CH-\d{4}$/.test(mintedLight) &&
+    perArm.bench.some((n) => n.id === mintedLight) &&
+    perArm.chains[mintedLight].kind === 'light',
+  mintedLight,
+);
+check(
+  'a light chain minted for a Fab arm carries the light-side layout',
+  perArm.chains[mintedLight].slots.map((s) => s.type).join('-') === 'promoter-vl-cl-term',
+);
+check(
+  'two light chains warn about mispairing rather than passing',
+  runFormatQc(perArm.format, perArm.chains, perArm.registry).checks.find(
+    (c) => c.id === 'light-pairing',
+  )?.status === 'warn',
+);
+check(
+  'clearing the choice leaves both arms unpaired again',
+  lightChainMode(run(perArm, { type: 'choose-light-chain', mode: 'none' }).format) === 'unset',
+);
+check(
+  'a block that needs no light chain drops the one it had',
+  !run(common, { type: 'set-arm-bb', arm: 'left', bb: 'vhh' }).format.arms.left.lightChainId,
+);
+check(
+  'the universal light chain is still in inventory to be chosen',
+  createInitialState().registry.registered['REG-0001'].chainName === 'Universal light chain',
+);
+
+console.log('\n— the molecule that gets made has its own ID —');
+let mol = run(
+  createInitialState(),
+  { type: 'choose-light-chain', mode: 'common', chainId: LIGHT },
+  { type: 'place-block', chainId: HEAVY, slotIndex: vhSlot, blockId: 'BB-0010' },
+  { type: 'place-block', chainId: HEAVY, slotIndex: ch3Slot(createInitialState(), HEAVY), blockId: 'BB-0070' },
+  { type: 'set-vector', chainId: HEAVY, vectorId: 'VEC-0001' },
+  { type: 'assemble', chainId: HEAVY },
+  { type: 'register', chainId: HEAVY },
+);
+mol = run(mol, { type: 'register-molecule' });
+check(
+  'a molecule with an unregistered chain is not registered',
+  !mol.format.moleculeId,
+  moleculeReadiness(mol.format, mol.chains).unregistered.map((c) => c.name).join(', '),
+);
+
+mol = run(
+  mol,
+  { type: 'place-block', chainId: HEAVY_B, slotIndex: vhSlotB, blockId: 'BB-0012' },
+  { type: 'place-block', chainId: HEAVY_B, slotIndex: ch3Slot(mol, HEAVY_B), blockId: 'BB-0071' },
+  { type: 'set-vector', chainId: HEAVY_B, vectorId: 'VEC-0001' },
+  { type: 'assemble', chainId: HEAVY_B },
+  { type: 'register', chainId: HEAVY_B },
+  { type: 'register-molecule' },
+);
+const molId = mol.format.moleculeId ?? '';
+check('registering every chain mints a MOL-id', /^MOL-\d{4}$/.test(molId), molId);
+const record = mol.registry.molecules[molId];
+check(
+  'the molecule records the registered chains it is built from',
+  record.regIds.length === 3 &&
+    record.regIds.every((id) => !!mol.registry.registered[id]),
+  record.regIds.join(', '),
+);
+check(
+  'it is named for what it binds and how it is built',
+  record.name.includes('HER2') && record.name.includes('CD3') && record.name.includes('bispecific'),
+  record.name,
+);
+check('registering the molecule settles its format too', !!record.formatId && !!mol.format.formatId);
+check('an asymmetric molecule records a heterodimeric Fc', record.fc === 'heterodimer');
+check(
+  're-registering the same molecule reuses the identifier',
+  run(mol, { type: 'register-molecule' }).format.moleculeId === molId,
+);
+check(
+  'reopening one of its chains unsettles the molecule',
+  !run(mol, { type: 'edit-construct', chainId: HEAVY }).format.moleculeId,
+);
+const second = run(
+  mol,
+  { type: 'place-block', chainId: HEAVY_B, slotIndex: vhSlotB, blockId: 'BB-0013' },
+  { type: 'edit-construct', chainId: HEAVY_B },
+  { type: 'assemble', chainId: HEAVY_B },
+  { type: 'register', chainId: HEAVY_B },
+  { type: 'register-molecule' },
+);
+check(
+  'a different molecule mints a new identifier',
+  second.format.moleculeId !== molId && Object.keys(second.registry.molecules).length === 2,
+  Object.keys(second.registry.molecules).join(', '),
+);
+
+console.log('\n— reviewing what was registered —');
+check(
+  'the review opens and closes from one flag',
+  run(mol, { type: 'open-review', open: true }).reviewOpen &&
+    !run(mol, { type: 'open-review', open: true }, { type: 'open-review', open: false }).reviewOpen,
+);
+const reg = mol.registry.registered[mol.chains[HEAVY].regIds[0]];
+check(
+  'a registration names the chain it came from',
+  reg.chainId === HEAVY && reg.registeredAt > 0,
+);
+const provenance = mol.registry.constructs[reg.constructId];
+check(
+  'every registration resolves to a construct, insert and backbone',
+  !!provenance &&
+    !!mol.registry.inserts[provenance.insertId] &&
+    !!mol.registry.vectors[provenance.vectorId],
+  `${reg.id} → ${provenance.id} → ${provenance.insertId} + ${provenance.vectorId}`,
+);
+check(
+  'the molecule check reports the identifier once registered',
+  runFormatQc(mol.format, mol.chains, mol.registry)
+    .checks.find((c) => c.id === 'molecule')
+    ?.detail.includes(molId) === true,
 );
 
 console.log('\n— construct map —');

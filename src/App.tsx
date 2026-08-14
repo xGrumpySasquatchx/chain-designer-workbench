@@ -7,9 +7,11 @@ import { DesignPad } from './components/DesignPad';
 import { FlowDiagram } from './components/FlowDiagram';
 import { QcPanel } from './components/QcPanel';
 import { RegistryRail } from './components/RegistryRail';
+import { RegistryReview } from './components/RegistryReview';
 import { TooltipLayer } from './components/Tooltip';
 import { VariantGallery } from './components/VariantGallery';
 import { WorklistStrip } from './components/WorklistStrip';
+import { useApp, useDispatch } from './state/store';
 import type { PartType } from './model/types';
 
 const LEGEND_ORDER: PartType[] = [
@@ -101,6 +103,10 @@ export default function App() {
   const [railWidth, setRailWidth] = useState(252);
   const [inspectorWidth, setInspectorWidth] = useState(344);
   const adjustable = useMinWidth(1181);
+  const state = useApp();
+  const dispatch = useDispatch();
+  const regCount = Object.keys(state.registry.registered).length;
+  const molCount = Object.keys(state.registry.molecules).length;
 
   return (
     <div className="app">
@@ -109,9 +115,19 @@ export default function App() {
           <h1>MsAb construct designer</h1>
           <p>
             Multiple-insert cloning bench — parts registry, chain bench, live molecule and construct
-            views, wired to the BB → INS → VEC → CC → REG loop.
+            views, wired to the BB → INS → VEC → CC → REG → MOL loop.
           </p>
         </div>
+        <button
+          className="btn primary review-open"
+          data-tip={`Review everything registered: ${molCount} ${
+            molCount === 1 ? 'molecule' : 'molecules'
+          } and ${regCount} ${regCount === 1 ? 'chain' : 'chains'}, each with the construct, insert and backbone behind it`}
+          onClick={() => dispatch({ type: 'open-review', open: true })}
+        >
+          Registered
+          <span className="badge">{molCount ? `${molCount} · ${regCount}` : regCount}</span>
+        </button>
         <div className="legend" aria-label="Part colour legend">
           {LEGEND_ORDER.map((type) => (
             <span key={type} data-tip={LEGEND_TIPS[type]}>
@@ -163,6 +179,7 @@ export default function App() {
       </div>
 
       <VariantGallery />
+      <RegistryReview />
       <TooltipLayer />
     </div>
   );

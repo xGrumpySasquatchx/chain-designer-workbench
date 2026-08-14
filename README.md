@@ -36,6 +36,8 @@ npm run lint
   branches it did not take are dimmed.
 - **QC and registration** — per-chain construct validation and whole-format validation across both
   arms. Failures block registration.
+- **Registration review** — everything that has been made, molecule by molecule and chain by chain,
+  with the construct, insert, backbone and inventory behind each one. See below.
 - **Combinatorics by stacking** — stacking a second option in a slot multiplies the design out.
   "Generate all" opens the variant gallery, and assembly mints one insert and construct per variant.
 - **Linked panels** — one selection is shared by every view. Clicking a bench slot, a domain on the
@@ -77,6 +79,12 @@ From [docs.bioglyph.app](https://docs.bioglyph.app/) (Design Pad, Quickstart):
   same format whichever arm is drawn first.
 - **The pad is functional, not decorative.** Choosing a block rewrites the bench: an scFv puts VH and
   VL on one chain, a VHH drops CH1 and the light chain, an xFab crosses CL onto the heavy chain.
+- **The light chain is a choice.** A Fab or xFab arm needs a light chain, and the pad asks which rather
+  than assuming one. **Common** pairs both arms with a single light chain, so nothing can mispair but
+  the same VL has to work in both binding sites; **one per arm** keeps each site's own VL and mints a
+  light chain for any arm that has none, leaving mispairing to be solved another way; **Clear** puts the
+  question back. Existing light chains are offered as chips, including ones already in inventory with
+  their `REG-id`, and the choice is what format QC reports on. Nothing is bound until it is chosen.
   Blocks already chosen for slots that survive the change are kept.
 
 ### How it is drawn
@@ -172,6 +180,7 @@ heights and fonts stay fixed while the sequence scales.
 | `CC-id` | Construct — an insert combined with a vector | on assemble |
 | `REG-id` | Registered chain — a construct checked into inventory | on register |
 | `FMT-id` | Format — the molecule's shape and specificity across both arms | on register format |
+| `MOL-id` | Molecule — this format built from these registered chains | on register molecule |
 
 A **chain design** is the bench-level working object: an ordered list of slots, each holding a stack
 of candidate building blocks, plus a vector. Resolution never changes it — the full slot list always
@@ -181,6 +190,22 @@ Identical designs do not mint duplicate records: assembling a design whose inser
 vector already exist resolves to the existing `INS-id` and `CC-id`. Editing selections on an
 assembled chain clears its construct so the next assembly mints a new `CC-id`, which is the "edit →
 new CC-id" branch of the flow.
+
+A **molecule** is what the loop finally makes, and it carries its own identifier. A format says what
+shape was designed and is deliberately reusable — every 1+1 common-light-chain bispecific shares one
+`FMT-id`. A molecule says which registered chains were combined, so `MOL-id` is the handle for the
+thing that now exists. It can only be minted once every chain on the arms is registered, registering
+it settles the format identity too, reaching the same molecule again reuses its `MOL-id`, and
+reopening any of its chains clears it because the molecule no longer describes what is on the bench.
+
+## Reviewing what was made
+
+The **Registered** button in the header (also `Review registered` in the QC panel) opens the review of
+everything that has been made: each molecule with its format, Fc, targets and the registered chains it
+is built from, and each registered chain with the construct, insert and backbone behind it, its
+component domains — filled for what the insert carries, outlined for what the backbone supplies — its
+size, and its inventory record. `Show on bench` takes a registration back to the chain it came from,
+which the pad and the map follow.
 
 ## Cloning loop
 
@@ -196,6 +221,9 @@ Implemented in `src/model/flow.ts`, one node per node of the process diagram:
 7. **Validate (QC).** Pass registers; fail returns to assemble or edit.
 8. **Register** → `REG-id`, and the loop moves to the next chain.
 
+Once every chain the molecule needs has a `REG-id`, **Register molecule** on the design pad closes the
+loop with a `MOL-id`.
+
 Every branch resolves to a next step — the diagram always has exactly one active node, and the
 primary action in the QC panel is always the one thing that chain needs next. It is drawn as a
 flowchart with fixed geometry: stadiums for the entry and exit, chamfered boxes for decisions, plain
@@ -205,13 +233,14 @@ boxes for actions, and orthogonal connectors whose branch labels sit in the corr
 
 **Per chain:** required components resolved (counting what the backbone supplies), backbone assigned,
 chain lineage consistent, constant-region compatibility (isotypes must agree across parts and
-backbone), no duplicated constant domains, coding sequence in frame, combinatorics resolved, plasmid
-size in range.
+backbone), no duplicated constant domains, coding sequence in frame — a chain with nothing to express
+fails, so a bare backbone cannot be registered as a chain — combinatorics resolved, plasmid size in
+range.
 
 **Per format:** both arm positions filled, symmetry verdict, CH3 pairing against that verdict
-(heterodimer needs knob and hole; a symmetric format should not carry them), light-chain pairing
-(a common light chain removes the mispairing problem), format registered, and the resulting
-specificity.
+(heterodimer needs knob and hole; a symmetric format should not carry them), the light-chain choice
+(unchosen while an arm needs one, passing for a common light chain, warning about mispairing for one
+per arm), format registered, molecule registered, and the resulting specificity.
 
 Failures block registration; warnings are surfaced before the construct is minted rather than after.
 
@@ -231,12 +260,13 @@ to the taxonomy above.
 ```
 src/model/      types, seeded registry, colors, combinatorics, QC, cloning-loop state machine,
                 bioglyph.ts (building blocks, connectivity, symmetry, format identity),
+                molecule.ts (light-chain choice, molecule identity and readiness),
                 dpad.ts (measured pad geometry, domain outlines, target colour slots),
                 geneious.ts (annotation and coordinate model for both map views),
                 mapview.ts (measured map geometry, gradient shading, selection dimming)
 src/state/      reducer, contexts, provider — all session state lives here
 src/components/ registry rail, bench rows and slots, design pad, construct map, flow diagram,
-                QC panel, worklist, variant gallery, activity log
+                QC panel, worklist, variant gallery, registration review, activity log
 scripts/smoke.ts headless walk through the loop, run with `npm run smoke`
 ```
 

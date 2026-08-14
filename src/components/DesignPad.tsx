@@ -39,6 +39,7 @@ import {
   type Lattice,
 } from '../model/dpad';
 import { COLORS, PART_LABELS, lengthIn } from '../model/parts';
+import { armsNeedingLight, lightChainMode, moleculeName, moleculeReadiness } from '../model/molecule';
 import { suppliedByVector } from '../model/combinatorics';
 import { useApp, useDispatch } from '../state/store';
 import { PART_DRAG_TYPE } from './RegistryRail';
@@ -56,6 +57,24 @@ export const BB_DRAG_TYPE = 'application/x-msab-bb';
  * Every domain stays a drop target and a selection handle, so the faithful
  * drawing is also the working interface.
  */
+
+/**
+ * Whether the arms share a light chain is a real design decision — a common
+ * light chain trades away each site's native VL to remove mispairing — so the
+ * pad offers it rather than applying it.
+ */
+const LIGHT_MODES: Array<{ mode: 'common' | 'per-arm'; label: string; tip: string }> = [
+  {
+    mode: 'common',
+    label: 'Common',
+    tip: 'Pair both arms with one light chain. Nothing can mispair, but the same VL has to work in both binding sites.',
+  },
+  {
+    mode: 'per-arm',
+    label: 'One per arm',
+    tip: 'Give each arm its own light chain, minting one where an arm has none. Each site keeps its native VL, and light-chain mispairing has to be solved another way.',
+  },
+];
 
 const EMPTY_STROKE = 0.028 * DOMAIN_W;
 const FC_BOTTOM = FC.top + 2 * DOMAIN_H + GAP;
@@ -81,6 +100,13 @@ export function DesignPad() {
   const formatRecord = state.format.formatId
     ? state.registry.formats[state.format.formatId]
     : undefined;
+  const molecule = state.format.moleculeId
+    ? state.registry.molecules[state.format.moleculeId]
+    : undefined;
+  const needLight = armsNeedingLight(state.format);
+  const lightMode = lightChainMode(state.format);
+  const lightChains = Object.values(state.chains).filter((c) => c.kind === 'light');
+  const readiness = moleculeReadiness(state.format, state.chains);
 
   function flash(chainId: string) {
     dispatch({ type: 'flash-chain', chainId });
@@ -455,7 +481,7 @@ export function DesignPad() {
     <Panel
       title="Design pad"
       tip="The molecule itself, drawn to BioGlyph's conventions: shape is the building block, colour is the target, and the Fc's two shades are homodimer against heterodimer"
-      trailing={formatRecord ? formatRecord.id : 'unregistered format'}
+      trailing={molecule ? molecule.id : formatRecord ? formatRecord.id : 'unregistered'}
     >
       <div className="bb-rail">
         {BB_LIBRARY.filter((def) => def.kind !== 'empty' && def.kind !== 'fc').map((def) => (
@@ -529,14 +555,109 @@ export function DesignPad() {
 
       <div className={`status-banner ${verdict.symmetric ? 'pass' : 'warn'}`}>{verdict.detail}</div>
 
+      {needLight.length > 0 && (
+        <div className="lc">
+          <div className="lc-head">
+            <span className="lc-title">Light chain</span>
+            <div className="seg">
+              {LIGHT_MODES.map((m) => (
+                <button
+                  key={m.mode}
+                  className={lightMode === m.mode ? 'active' : ''}
+                  data-tip={m.tip}
+                  onClick={() => dispatch({ type: 'choose-light-chain', mode: m.mode })}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+            {lightMode !== 'unset' && (
+              <button
+                className="btn"
+                data-tip="Unpair the arms from their light chain, leaving the choice open again"
+                onClick={() => dispatch({ type: 'choose-light-chain', mode: 'none' })}
+              >
+                Clear
+              </button>
+            )}
+          </div>
+
+          {lightMode === 'per-arm' ? (
+            needLight.map((arm) => (
+              <div className="lc-row" key={arm}>
+                <span className="lc-arm">{arm} arm</span>
+                {lightChains.map((c) => (
+                  <LightChip
+                    key={c.id}
+                    chain={c}
+                    active={state.format.arms[arm].lightChainId === c.id}
+                    tip={`Pair the ${arm} arm with ${c.name}${
+                      c.regIds.length ? ` (${c.regIds.join(', ')}, already in inventory)` : ''
+                    }`}
+                    onPick={() => dispatch({ type: 'set-arm-light-chain', arm, chainId: c.id })}
+                  />
+                ))}
+              </div>
+            ))
+          ) : (
+            <div className="lc-row">
+              <span className="lc-arm">{lightMode === 'common' ? 'both arms' : 'not chosen'}</span>
+              {lightChains.map((c) => (
+                <LightChip
+                  key={c.id}
+                  chain={c}
+                  active={lightMode === 'common' && state.format.arms[needLight[0]].lightChainId === c.id}
+                  tip={`Use ${c.name} on both arms${
+                    c.regIds.length ? ` (${c.regIds.join(', ')}, already in inventory)` : ''
+                  }`}
+                  onPick={() => dispatch({ type: 'choose-light-chain', mode: 'common', chainId: c.id })}
+                />
+              ))}
+              <button
+                className="lc-chip new"
+                data-tip="Mint a new light chain on the bench and pair both arms with it"
+                onClick={() => dispatch({ type: 'choose-light-chain', mode: 'common', mint: true })}
+              >
+                + New light chain
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="kv">
         <span>Format</span>
         <span>{formatRecord?.name ?? 'not registered'}</span>
       </div>
 
+      <div className="kv">
+        <span>Molecule</span>
+        <span>
+          {molecule
+            ? `${molecule.id} · ${molecule.name}`
+            : `${moleculeName(state.format, state.chains, state.registry)} · not registered`}
+        </span>
+      </div>
+
       <div className="toolbar" style={{ marginTop: 8, marginBottom: 0 }}>
         <button
           className="btn primary"
+          disabled={!readiness.ready}
+          data-tip={
+            molecule
+              ? `Already registered as ${molecule.id}; re-checking reuses that identifier`
+              : readiness.ready
+                ? 'Give the molecule its own identifier (MOL-id), recording which registered chains it is built from. The same molecule keeps its first MOL-id.'
+                : `Register every chain first — still to register: ${
+                    readiness.unregistered.map((c) => c.name).join(', ') || 'no chains on the arms yet'
+                  }`
+          }
+          onClick={() => dispatch({ type: 'register-molecule' })}
+        >
+          {molecule ? 'Re-check molecule' : 'Register molecule'}
+        </button>
+        <button
+          className="btn"
           data-tip="Give this shape a format identity (FMT-id). An identical format keeps its original identifier rather than minting a duplicate."
           onClick={() => dispatch({ type: 'register-format' })}
         >
@@ -578,6 +699,26 @@ export function DesignPad() {
         outlined domain is one still waiting for a sequence.
       </p>
     </Panel>
+  );
+}
+
+/** A light chain on the bench, offered as a pairing choice. */
+function LightChip({
+  chain,
+  active,
+  tip,
+  onPick,
+}: {
+  chain: ChainDesign;
+  active: boolean;
+  tip: string;
+  onPick: () => void;
+}) {
+  return (
+    <button className={`lc-chip ${active ? 'active' : ''}`} data-tip={tip} onClick={onPick}>
+      {chain.name}
+      {chain.regIds.length > 0 && <span className="mono">{chain.regIds[0]}</span>}
+    </button>
   );
 }
 

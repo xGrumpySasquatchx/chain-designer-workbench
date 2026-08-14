@@ -9,11 +9,21 @@ import {
   relayoutSlots,
   type Counters,
 } from '../model/registry';
-import { armSlots, bbDef, formatName, formatSignature, symmetry } from '../model/bioglyph';
+import { armSlots, bbDef, chainTarget, formatName, formatSignature, symmetry } from '../model/bioglyph';
 import { enumerateVariants, variantLabel } from '../model/combinatorics';
+import {
+  armsNeedingLight,
+  moleculeChainIds,
+  moleculeFc,
+  moleculeName,
+  moleculeReadiness,
+  moleculeSignature,
+  moleculeTargets,
+} from '../model/molecule';
 import { runQc } from '../model/qc';
 import type {
   Alphabet,
+  ArmDesign,
   ArmId,
   BbKind,
   BenchGroup,
@@ -60,6 +70,8 @@ export interface AppState {
   galleryChainId: string | null;
   /** True while the construct map is expanded into a full-width sheet. */
   mapExpanded: boolean;
+  /** True while the review of everything registered is open. */
+  reviewOpen: boolean;
   log: LogEntry[];
   flashChainId: string | null;
 }
@@ -96,7 +108,19 @@ export type Action =
   | { type: 'set-pad-color'; mode: 'target' | 'part' }
   | { type: 'set-arm-bb'; arm: ArmId; bb: BbKind }
   | { type: 'fuse-bb'; arm: ArmId; bb: BbKind }
+  /** Whether the arms share one light chain, carry one each, or have none. */
+  | {
+      type: 'choose-light-chain';
+      mode: 'common' | 'per-arm' | 'none';
+      /** Pair the arms with a light chain already on the bench. */
+      chainId?: string;
+      /** Force a new light chain rather than reusing one that exists. */
+      mint?: boolean;
+    }
+  | { type: 'set-arm-light-chain'; arm: ArmId; chainId: string }
   | { type: 'register-format' }
+  | { type: 'register-molecule' }
+  | { type: 'open-review'; open: boolean }
   | { type: 'expand-map'; expanded: boolean }
   | { type: 'open-gallery'; chainId: string | null }
   | { type: 'flash-chain'; chainId: string | null };
@@ -119,6 +143,7 @@ export function createInitialState(): AppState {
     padColor: 'target',
     galleryChainId: null,
     mapExpanded: false,
+    reviewOpen: false,
     log: [],
     flashChainId: null,
   };
@@ -235,7 +260,7 @@ export function reducer(state: AppState, action: Action): AppState {
         log: log(
           state,
           'edit',
-          `${block?.name ?? action.blockId} → ${chain.name}${action.stack ? ' (stacked)' : ''}`,
+          `${block?.name ?? action.blockId} ? ${chain.name}${action.stack ? ' (stacked)' : ''}`,
         ),
       };
     }
@@ -307,7 +332,7 @@ export function reducer(state: AppState, action: Action): AppState {
           ...c,
           vectorId: id,
         })),
-        log: log(state, 'mint', `${id} minted — new empty backbone`),
+        log: log(state, 'mint', `${id} minted - new empty backbone`),
       };
     }
 
@@ -326,7 +351,7 @@ export function reducer(state: AppState, action: Action): AppState {
           counters,
           chain.kind,
           variant.assignment,
-          `${chain.name} insert — ${label}`,
+          `${chain.name} insert - ${label}`,
         );
         registry = res.registry;
         counters = res.counters;
@@ -373,22 +398,31 @@ export function reducer(state: AppState, action: Action): AppState {
       };
     }
 
-    case 'edit-construct':
+    case 'edit-construct': {
+      const reopened = withChain(state, action.chainId, (c) => ({
+        ...c,
+        constructIds: [],
+        regIds: [],
+      }));
+      // Reopening a chain the molecule is built from unsettles the molecule too.
+      const inMolecule = moleculeChainIds(state.format).includes(action.chainId);
       return {
-        ...withChain(state, action.chainId, (c) => ({ ...c, constructIds: [], regIds: [] })),
+        ...reopened,
+        format: inMolecule ? { ...state.format, moleculeId: null } : state.format,
         log: log(
           state,
           'edit',
-          `${state.chains[action.chainId]?.name ?? ''} reopened for editing — next assembly mints a new CC-id`,
+          `${state.chains[action.chainId]?.name ?? ''} reopened for editing - next assembly mints a new CC-id`,
         ),
       };
+    }
 
     case 'register': {
       const chain = state.chains[action.chainId];
       if (!chain || !chain.constructIds.length) return state;
       const qc = runQc(chain, state.registry);
       if (qc.status === 'fail') {
-        return { ...state, log: log(state, 'qc', `QC failed for ${chain.name} — not registered`) };
+        return { ...state, log: log(state, 'qc', `QC failed for ${chain.name} - not registered`) };
       }
       let registry = state.registry;
       let counters = state.counters;
@@ -404,6 +438,8 @@ export function reducer(state: AppState, action: Action): AppState {
               id: regId,
               constructId: ccId,
               chainName: registry.constructs[ccId]?.chainName ?? chain.name,
+              chainId: chain.id,
+              registeredAt: Date.now(),
               inventory: {
                 location: `Freezer B / rack 4 / box ${12 + i}`,
                 plasmidUg: 0,
@@ -517,7 +553,7 @@ export function reducer(state: AppState, action: Action): AppState {
       const remaining = group.children.filter((c) => c !== action.chainId);
       const chainNode: BenchNode = { kind: 'chain', id: action.chainId };
       // Ejected chains land immediately above the group they came from
-      // (open question 9.2 — not restored to their pre-group position).
+      // (open question 9.2 - not restored to their pre-group position).
       const replacement: BenchNode[] =
         remaining.length === 0 ? [chainNode] : [chainNode, { ...group, children: remaining }];
       return {
@@ -597,13 +633,10 @@ export function reducer(state: AppState, action: Action): AppState {
       const def = bbDef(action.bb);
       const chains = { ...state.chains };
 
-      // Binding a light chain: reuse one already on the bench rather than
-      // silently creating a second copy of a shared light chain.
-      let lightChainId = arm.lightChainId;
-      if (def.needsLightChain && !lightChainId) {
-        lightChainId =
-          Object.values(state.chains).find((c) => c.kind === 'light')?.id ?? null;
-      }
+      // A block that needs a light chain does not pick one up on its own: which
+      // light chain, and whether the arms share it, is chosen on the pad. A block
+      // that needs none drops the one it had.
+      const lightChainId = def.needsLightChain ? arm.lightChainId : null;
 
       // A new block on the arm replaces what was there, fusions included.
       const nextArm = { ...arm, bb: action.bb, lightChainId, fused: [] };
@@ -629,6 +662,7 @@ export function reducer(state: AppState, action: Action): AppState {
         arms: { ...state.format.arms, [action.arm]: nextArm },
         // Changing the shape changes the format, so its identity is re-derived.
         formatId: null,
+        moleculeId: null,
       };
       return {
         ...state,
@@ -653,12 +687,117 @@ export function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         chains,
-        format: { arms: { ...state.format.arms, [action.arm]: nextArm }, formatId: null },
+        format: {
+          arms: { ...state.format.arms, [action.arm]: nextArm },
+          formatId: null,
+          moleculeId: null,
+        },
         log: log(
           state,
           'edit',
           `${bbDef(action.bb).label} fused onto the ${action.arm} arm`,
         ),
+      };
+    }
+
+    /**
+     * The light chain decision. A common light chain is one option, not the
+     * default: sharing one removes light-chain mispairing, while one per arm
+     * keeps each arm's own VL and leaves the mispairing to solve another way.
+     */
+    case 'choose-light-chain': {
+      const needed = armsNeedingLight(state.format);
+      if (!needed.length) return state;
+
+      let counters = state.counters;
+      const chains = { ...state.chains };
+      let bench = state.bench;
+      const arms = { ...state.format.arms };
+      const minted: string[] = [];
+
+      const mintLight = (arm: ArmId, name: string): string => {
+        const [id, next] = mintId(counters, 'CH');
+        counters = next;
+        chains[id] = makeChain(id, name, 'light', arms[arm].bb);
+        bench = [...bench, { kind: 'chain', id }];
+        minted.push(`${id} ${name}`);
+        return id;
+      };
+
+      const armName = (arm: ArmId): string => {
+        const heavyId = arms[arm].heavyChainId;
+        const target = chainTarget(heavyId ? chains[heavyId] : undefined, state.registry);
+        return target ? `${target} light chain` : `${arm} arm light chain`;
+      };
+
+      if (action.mode === 'none') {
+        needed.forEach((arm) => (arms[arm] = { ...arms[arm], lightChainId: null }));
+      } else if (action.mode === 'common') {
+        const onBench = Object.values(chains).filter((c) => c.kind === 'light');
+        const fresh = () => {
+          const taken = onBench.some((c) => c.name === 'Common light chain');
+          return mintLight(needed[0], taken ? `Common light chain ${onBench.length + 1}` : 'Common light chain');
+        };
+        const shared = action.mint
+          ? fresh()
+          : (action.chainId ?? (onBench.length === 1 ? onBench[0].id : null) ?? fresh());
+        needed.forEach((arm) => (arms[arm] = { ...arms[arm], lightChainId: shared }));
+      } else {
+        // One each: the first arm keeps whatever it already had, later arms that
+        // would share it get their own.
+        const taken = new Set<string>();
+        needed.forEach((arm) => {
+          const current = arms[arm].lightChainId;
+          if (current && !taken.has(current)) {
+            taken.add(current);
+            return;
+          }
+          const id = mintLight(arm, armName(arm));
+          arms[arm] = { ...arms[arm], lightChainId: id };
+          taken.add(id);
+        });
+      }
+
+      // Every bound light chain follows its arm's layout, unless it is already
+      // registered and therefore fixed.
+      needed.forEach((arm) => {
+        const id = arms[arm].lightChainId;
+        const layout = armSlots(arms[arm]).light;
+        if (!id || !chains[id] || !layout || chains[id].regIds.length) return;
+        chains[id] = { ...chains[id], slots: relayoutSlots(chains[id].slots, layout) };
+      });
+
+      const sharedId = arms[needed[0]].lightChainId;
+      const sharedName = (sharedId && chains[sharedId]?.name) || '';
+      const detail =
+        action.mode === 'none'
+          ? 'no light chain bound to either arm'
+          : action.mode === 'common'
+            ? `common light chain: ${sharedName}`
+            : `one light chain per arm${minted.length ? `, minting ${minted.join(', ')}` : ''}`;
+
+      return {
+        ...state,
+        counters,
+        chains,
+        bench,
+        format: { arms, formatId: null, moleculeId: null },
+        log: log(state, minted.length ? 'mint' : 'edit', `Light chain choice - ${detail}`),
+      };
+    }
+
+    case 'set-arm-light-chain': {
+      const chain = state.chains[action.chainId];
+      if (!chain || chain.kind !== 'light') return state;
+      const arm: ArmDesign = { ...state.format.arms[action.arm], lightChainId: action.chainId };
+      return {
+        ...state,
+        format: {
+          arms: { ...state.format.arms, [action.arm]: arm },
+          formatId: null,
+          moleculeId: null,
+        },
+        log: log(state, 'edit', `${chain.name} paired with the ${action.arm} arm`),
       };
     }
 
@@ -670,7 +809,7 @@ export function reducer(state: AppState, action: Action): AppState {
         return {
           ...state,
           format: { ...state.format, formatId: existing.id },
-          log: log(state, 'mint', `${existing.id} reused — this format already exists`),
+          log: log(state, 'mint', `${existing.id} reused - this format already exists`),
         };
       }
       const [id, counters] = mintId(state.counters, 'FMT');
@@ -691,9 +830,73 @@ export function reducer(state: AppState, action: Action): AppState {
           },
         },
         format: { ...state.format, formatId: id },
-        log: log(state, 'mint', `${id} registered — new format`),
+        log: log(state, 'mint', `${id} registered - new format`),
       };
     }
+
+    /**
+     * The molecule is the thing the loop finally makes, so it gets its own
+     * identifier once every chain it is built from is registered. Reaching the
+     * same molecule twice reuses the first MOL-id, as the other records do.
+     */
+    case 'register-molecule': {
+      const readiness = moleculeReadiness(state.format, state.chains);
+      if (!readiness.ready) {
+        const missing = readiness.unregistered.map((c) => c.name).join(', ');
+        return {
+          ...state,
+          log: log(
+            state,
+            'qc',
+            missing
+              ? `Molecule not registered: ${missing} still to register`
+              : 'Molecule not registered: no chains on the arms yet',
+          ),
+        };
+      }
+
+      // A molecule always has a shape, so its format identity is settled first.
+      const withFormat = reducer(state, { type: 'register-format' });
+      const signature = moleculeSignature(withFormat.format, withFormat.chains, withFormat.registry);
+      const existing = Object.values(withFormat.registry.molecules).find(
+        (m) => m.signature === signature,
+      );
+      if (existing) {
+        return {
+          ...withFormat,
+          format: { ...withFormat.format, moleculeId: existing.id },
+          log: log(withFormat, 'mint', `${existing.id} reused: this molecule already exists`),
+        };
+      }
+
+      const [id, counters] = mintId(withFormat.counters, 'MOL');
+      const name = moleculeName(withFormat.format, withFormat.chains, withFormat.registry);
+      return {
+        ...withFormat,
+        counters,
+        registry: {
+          ...withFormat.registry,
+          molecules: {
+            ...withFormat.registry.molecules,
+            [id]: {
+              id,
+              name,
+              formatId: withFormat.format.formatId,
+              regIds: readiness.regIds,
+              targets: moleculeTargets(withFormat.format, withFormat.chains, withFormat.registry),
+              fc: moleculeFc(withFormat.format, withFormat.chains, withFormat.registry),
+              signature,
+              createdAt: Date.now(),
+            },
+          },
+        },
+        format: { ...withFormat.format, moleculeId: id },
+        log: log(withFormat, 'mint', `${id} registered: ${name}`),
+      };
+    }
+
+    case 'open-review':
+      return { ...state, reviewOpen: action.open };
 
     case 'expand-map':
       return { ...state, mapExpanded: action.expanded };

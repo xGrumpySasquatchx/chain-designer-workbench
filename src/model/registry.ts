@@ -17,7 +17,7 @@ import type {
  * Sequential ID minting. Counters live in app state so the whole session is a
  * pure function of its action log.
  */
-export type IdPrefix = 'BB' | 'INS' | 'VEC' | 'CC' | 'REG' | 'CH' | 'GRP' | 'FMT';
+export type IdPrefix = 'BB' | 'INS' | 'VEC' | 'CC' | 'REG' | 'CH' | 'GRP' | 'FMT' | 'MOL';
 
 export type Counters = Record<IdPrefix, number>;
 
@@ -274,6 +274,9 @@ export function makeChain(
   };
 }
 
+/** Two weeks back, so seeded inventory reads as work that predates the session. */
+const EARLIER = Date.now() - 14 * 24 * 60 * 60 * 1000;
+
 export function initialRegistry(): Registry {
   const registry: Registry = {
     blocks: {},
@@ -282,24 +285,27 @@ export function initialRegistry(): Registry {
     constructs: {},
     registered: {},
     formats: {},
+    molecules: {},
   };
   BLOCK_LIST.forEach((b) => (registry.blocks[b.id] = b));
   VECTOR_LIST.forEach((v) => (registry.vectors[v.id] = v));
   INSERT_LIST.forEach((i) => (registry.inserts[i.id] = i));
 
-  // One chain is already checked in, so the worklist exercises the "registered?"
-  // branch of the flow on first load.
+  // A universal light chain someone registered earlier. It sits in inventory as
+  // something this design can draw on, not as a light chain it already uses.
   registry.constructs['CC-0001'] = {
     id: 'CC-0001',
     insertId: 'INS-0002',
     vectorId: 'VEC-0003',
     chainName: 'Universal light chain',
-    createdAt: Date.now(),
+    createdAt: EARLIER,
   };
   registry.registered['REG-0001'] = {
     id: 'REG-0001',
     constructId: 'CC-0001',
     chainName: 'Universal light chain',
+    chainId: 'CH-0001',
+    registeredAt: EARLIER,
     inventory: { location: 'Freezer B / rack 4 / box 12', plasmidUg: 480, glycerolStock: true },
   };
   return registry;
@@ -314,9 +320,13 @@ export const INITIAL_COUNTERS: Counters = {
   CH: 3,
   GRP: 0,
   FMT: 0,
+  MOL: 0,
 };
 
-/** Opening worklist: one registered chain plus two chains still to design. */
+/**
+ * Opening worklist: two arms to design, plus the universal light chain already
+ * in inventory. Nothing pairs the arms to it — that is the designer's call.
+ */
 export function initialChains(): ChainDesign[] {
   const light = makeChain('CH-0001', 'Universal light chain', 'light');
   light.slots = light.slots.map((s) => {
@@ -327,25 +337,21 @@ export function initialChains(): ChainDesign[] {
   light.constructIds = ['CC-0001'];
   light.regIds = ['REG-0001'];
 
-  const heavyA = makeChain('CH-0002', 'HER2 arm (heavy)', 'heavy');
-  heavyA.pairedWith = light.id;
-
-  const heavyB = makeChain('CH-0003', 'CD3 arm (heavy)', 'heavy');
-  heavyB.pairedWith = light.id;
-
-  return [light, heavyA, heavyB];
+  return [light, makeChain('CH-0002', 'HER2 arm (heavy)', 'heavy'), makeChain('CH-0003', 'CD3 arm (heavy)', 'heavy')];
 }
 
 /**
- * Opening format: a 1+1 bispecific with a common light chain — a Fab on each
- * arm, both drawing on the same light chain.
+ * Opening format: a Fab on each arm, with no light chain bound. A Fab needs one,
+ * and whether both arms share a common light chain or carry their own changes the
+ * molecule, so the pad asks rather than assumes.
  */
 export function initialFormat(): FormatDesign {
   return {
     arms: {
-      left: { id: 'left', bb: 'fab', heavyChainId: 'CH-0002', lightChainId: 'CH-0001', fused: [] },
-      right: { id: 'right', bb: 'fab', heavyChainId: 'CH-0003', lightChainId: 'CH-0001', fused: [] },
+      left: { id: 'left', bb: 'fab', heavyChainId: 'CH-0002', lightChainId: null, fused: [] },
+      right: { id: 'right', bb: 'fab', heavyChainId: 'CH-0003', lightChainId: null, fused: [] },
     },
     formatId: null,
+    moleculeId: null,
   };
 }

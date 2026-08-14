@@ -7,6 +7,9 @@
  *   VEC-id  vector / backbone, typically already carrying constant regions
  *   CC-id   construct, an insert combined with a vector
  *   REG-id  registered chain, a construct checked into inventory
+ *   FMT-id  format, the molecule's shape and specificity across both arms
+ *   MOL-id  molecule, the thing actually made: this format built from these
+ *           registered chains
  */
 
 export type PartType =
@@ -97,6 +100,9 @@ export interface RegisteredChain {
   id: string;
   constructId: string;
   chainName: string;
+  /** The bench chain it came from, so a registration can be reviewed in place. */
+  chainId?: string;
+  registeredAt: number;
   inventory: {
     location: string;
     plasmidUg: number;
@@ -127,8 +133,6 @@ export interface ChainDesign {
   constructIds: string[];
   /** One REG-id per construct checked into inventory. */
   regIds: string[];
-  /** The chain this one pairs with in the molecule pad. */
-  pairedWith?: string;
 }
 
 export interface BenchGroup {
@@ -172,11 +176,18 @@ export interface ArmDesign {
   bb: BbKind;
   /** The chain that carries this arm's heavy-side coding sequence. */
   heavyChainId: string | null;
-  /** Only used by building blocks that need a separate light chain. */
+  /**
+   * The light chain this arm pairs with. Building blocks that need one start out
+   * unassigned: whether to share one light chain between the arms is a decision
+   * the designer makes, not a default the app applies.
+   */
   lightChainId: string | null;
   /** Building blocks fused to the arm by proximity, in order. */
   fused: BbKind[];
 }
+
+/** How the arms that need a light chain get one. */
+export type LightChainMode = 'common' | 'per-arm' | 'unset';
 
 /**
  * The molecule under design. Symmetry across the Y-axis through the Fc decides
@@ -186,6 +197,8 @@ export interface FormatDesign {
   arms: Record<ArmId, ArmDesign>;
   /** Format identity is reused whenever the same format recurs. */
   formatId: string | null;
+  /** The molecule built from this format's registered chains, once registered. */
+  moleculeId: string | null;
 }
 
 export type CheckStatus = 'pass' | 'warn' | 'fail';
@@ -215,6 +228,24 @@ export interface FormatRecord {
   symmetric: boolean;
 }
 
+/**
+ * A molecule: the thing the loop actually makes. A format says what shape was
+ * designed; a molecule says which registered chains were combined to build it,
+ * so two projects that reach the same molecule share one identifier.
+ */
+export interface MoleculeRecord {
+  id: string;
+  name: string;
+  formatId: string | null;
+  /** Registered chains it is built from, in arm order. */
+  regIds: string[];
+  targets: string[];
+  fc: 'homodimer' | 'heterodimer' | 'none';
+  /** Format signature plus the registered chain set; identical molecules collide. */
+  signature: string;
+  createdAt: number;
+}
+
 export interface Registry {
   blocks: Record<string, BuildingBlock>;
   vectors: Record<string, Vector>;
@@ -222,4 +253,5 @@ export interface Registry {
   constructs: Record<string, Construct>;
   registered: Record<string, RegisteredChain>;
   formats: Record<string, FormatRecord>;
+  molecules: Record<string, MoleculeRecord>;
 }

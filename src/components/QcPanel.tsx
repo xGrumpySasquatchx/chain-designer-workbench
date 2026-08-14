@@ -107,6 +107,13 @@ export function QcPanel() {
         >
           Edit selections
         </button>
+        <button
+          className="btn"
+          data-tip="Review everything registered so far: each molecule with the chains it is built from, and each chain with its construct, insert, backbone and inventory"
+          onClick={() => dispatch({ type: 'open-review', open: true })}
+        >
+          Review registered
+        </button>
       </div>
 
       {registered.length > 0 && (
