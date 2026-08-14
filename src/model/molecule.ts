@@ -1,4 +1,4 @@
-import { bbDef, chainTarget, formatSignature, symmetry } from './bioglyph';
+import { bbDef, chainTarget, formatSignature, scaffoldFc } from './bioglyph';
 import type {
   ArmId,
   ChainDesign,
@@ -112,5 +112,5 @@ export function moleculeFc(
   chains: Record<string, ChainDesign>,
   registry: Registry,
 ) {
-  return symmetry(format, chains, registry).fc;
+  return scaffoldFc(format, chains, registry);
 }

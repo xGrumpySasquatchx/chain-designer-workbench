@@ -4,6 +4,7 @@ import type {
   BbKind,
   BuildingBlock,
   ChainDesign,
+  FcBbKind,
   FormatDesign,
   PartType,
   Registry,
@@ -41,6 +42,8 @@ export interface BbDef {
   needsLightChain: boolean;
   /** Fuses onto another block rather than occupying an arm of its own. */
   fusesOnly: boolean;
+  /** Occupies the Fc scaffold in the centre of the pad, not an arm. */
+  scaffold?: boolean;
   description: string;
 }
 
@@ -91,6 +94,26 @@ export const BB_LIBRARY: BbDef[] = [
     description: 'Single variable domain, no light chain',
   },
   {
+    kind: 'homofc',
+    label: 'Homo-Fc',
+    shape: 'stem',
+    arm: false,
+    needsLightChain: false,
+    fusesOnly: false,
+    scaffold: true,
+    description: 'Homodimeric Fc: identical wild-type CH3 on both heavy chains',
+  },
+  {
+    kind: 'heterofc',
+    label: 'Hetero-Fc',
+    shape: 'stem',
+    arm: false,
+    needsLightChain: false,
+    fusesOnly: false,
+    scaffold: true,
+    description: 'Heterodimeric Fc: knob-into-hole CH3 pairing across the two heavy chains',
+  },
+  {
     kind: 'mutein',
     label: 'Mutein',
     shape: 'ball',
@@ -139,10 +162,10 @@ export const BB_LIBRARY: BbDef[] = [
     kind: 'fc',
     label: 'Fc',
     shape: 'stem',
-    arm: false,
+    arm: true,
     needsLightChain: false,
     fusesOnly: false,
-    description: 'Dimerization scaffold; homodimeric or heterodimeric',
+    description: 'Fc-only arm: hinge, CH2 and CH3 with no variable domain',
   },
   {
     kind: 'empty',
@@ -159,10 +182,27 @@ export function bbDef(kind: BbKind): BbDef {
   return BB_LIBRARY.find((b) => b.kind === kind) ?? BB_LIBRARY[BB_LIBRARY.length - 1];
 }
 
+export function isFcScaffold(kind: BbKind): kind is FcBbKind {
+  return kind === 'homofc' || kind === 'heterofc';
+}
+
+export function fcPairing(kind: FcBbKind | 'none'): 'homodimer' | 'heterodimer' | 'none' {
+  if (kind === 'homofc') return 'homodimer';
+  if (kind === 'heterofc') return 'heterodimer';
+  return 'none';
+}
+
+/** Sequence parts the Fc building block writes onto the two heavy chains. */
+export const FC_PARTS: Record<FcBbKind, { ch2: string; leftCh3: string; rightCh3: string }> = {
+  homofc: { ch2: 'BB-0060', leftCh3: 'BB-0072', rightCh3: 'BB-0072' },
+  heterofc: { ch2: 'BB-0060', leftCh3: 'BB-0070', rightCh3: 'BB-0071' },
+};
+
 /** Controlled connectivity: what a given block is allowed to fuse onto. */
 export function canFuse(source: BbKind, onto: BbKind): boolean {
   if (source === onto) return false;
   const def = bbDef(source);
+  if (def.scaffold) return false;
   if (def.fusesOnly) return onto !== 'empty';
   // Arm blocks fuse to the Fc scaffold by occupying an arm position, and can
   // also be fused in tandem onto another arm block.
@@ -240,6 +280,8 @@ export function slotsForBb(kind: BbKind): { heavy: SlotDef[]; light: SlotDef[] |
         light: null,
       };
     case 'fc':
+    case 'homofc':
+    case 'heterofc':
     case 'tag':
     case 'empty':
     default:
@@ -329,6 +371,19 @@ export function symmetry(
   };
 }
 
+/**
+ * The Fc actually on the scaffold, falling back to the symmetry recommendation
+ * until a Homo-Fc or Hetero-Fc has been placed.
+ */
+export function scaffoldFc(
+  format: FormatDesign,
+  chains: Record<string, ChainDesign>,
+  registry: Registry,
+): 'homodimer' | 'heterodimer' | 'none' {
+  const chosen = fcPairing(format.fc);
+  return chosen === 'none' ? symmetry(format, chains, registry).fc : chosen;
+}
+
 /** Shape + color signature, so an identical format resolves to one identifier. */
 export function formatSignature(
   format: FormatDesign,
@@ -345,7 +400,7 @@ export function formatSignature(
   };
   // A mirrored format is the same format whichever arm is drawn first.
   const arms = [arm('left'), arm('right')].sort();
-  return `${arms.join('|')}::${symmetry(format, chains, registry).fc}`;
+  return `${arms.join('|')}::${scaffoldFc(format, chains, registry)}`;
 }
 
 export function formatName(
@@ -361,8 +416,9 @@ export function formatName(
     );
     return `${target ? `anti-${target} ` : ''}${bbDef(design.bb).label}`;
   };
-  const verdict = symmetry(format, chains, registry);
-  return `${label('left')} × ${label('right')} · ${verdict.fc} Fc`;
+  const dimer = scaffoldFc(format, chains, registry);
+  const fcLabel = format.fc === 'none' ? `${dimer} Fc` : bbDef(format.fc).label;
+  return `${label('left')} × ${label('right')} · ${fcLabel}`;
 }
 
 /** Knob-into-hole variants are how a heterodimeric Fc is actually built. */

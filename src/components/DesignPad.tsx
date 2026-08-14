@@ -1,6 +1,6 @@
 import { useRef, useState, type DragEvent } from 'react';
 import { Panel } from './Panel';
-import { BB_LIBRARY, bbDef, canFuse, chainTarget, symmetry } from '../model/bioglyph';
+import { BB_LIBRARY, bbDef, canFuse, chainTarget, isFcScaffold, scaffoldFc, symmetry } from '../model/bioglyph';
 import {
   ARM_TILT,
   BAR_T,
@@ -46,6 +46,7 @@ import { PART_DRAG_TYPE } from './RegistryRail';
 import type { ArmId, BbKind, ChainDesign, PartType } from '../model/types';
 
 export const BB_DRAG_TYPE = 'application/x-msab-bb';
+export const FC_DRAG_TYPE = 'application/x-msab-fc';
 
 /**
  * The BioGlyph Design Pad (docs.bioglyph.app), drawn to the proportions
@@ -92,10 +93,12 @@ export function DesignPad() {
   const state = useApp();
   const dispatch = useDispatch();
   const [overArm, setOverArm] = useState<ArmId | null>(null);
+  const [overFc, setOverFc] = useState(false);
   const [zoom, setZoom] = useState(1);
   const flashTimer = useRef<number | null>(null);
 
   const verdict = symmetry(state.format, state.chains, state.registry);
+  const dimer = scaffoldFc(state.format, state.chains, state.registry);
   const slots = targetSlots(state.format, state.chains, state.registry);
   const formatRecord = state.format.formatId
     ? state.registry.formats[state.format.formatId]
@@ -170,14 +173,27 @@ export function DesignPad() {
 
   function dropBlock(e: DragEvent<SVGElement>, arm: ArmId) {
     setOverArm(null);
+    setOverFc(false);
     const kind = e.dataTransfer.getData(BB_DRAG_TYPE) as BbKind;
     if (!kind) return;
     e.preventDefault();
+    if (isFcScaffold(kind)) {
+      dispatch({ type: 'set-fc-bb', bb: kind });
+      return;
+    }
     if (bbDef(kind).fusesOnly) {
       if (canFuse(kind, state.format.arms[arm].bb)) dispatch({ type: 'fuse-bb', arm, bb: kind });
       return;
     }
     dispatch({ type: 'set-arm-bb', arm, bb: kind });
+  }
+
+  function dropFcBlock(e: DragEvent<SVGElement>) {
+    setOverFc(false);
+    const kind = e.dataTransfer.getData(BB_DRAG_TYPE) as BbKind;
+    if (!isFcScaffold(kind)) return;
+    e.preventDefault();
+    dispatch({ type: 'set-fc-bb', bb: kind });
   }
 
   /** One domain: outline, fill state, drop target and selection handle. */
@@ -326,10 +342,14 @@ export function DesignPad() {
           }
           style={{ cursor: 'pointer' }}
           onDragOver={(e) => {
-            if (e.dataTransfer.types.includes(BB_DRAG_TYPE)) {
-              e.preventDefault();
-              setOverArm(arm);
+            if (!e.dataTransfer.types.includes(BB_DRAG_TYPE)) return;
+            e.preventDefault();
+            if (e.dataTransfer.types.includes(FC_DRAG_TYPE)) {
+              setOverFc(true);
+              setOverArm(null);
+              return;
             }
+            setOverArm(arm);
           }}
           onDragLeave={() => setOverArm(null)}
           onDrop={(e) => dropBlock(e, arm)}
@@ -385,8 +405,10 @@ export function DesignPad() {
 
   /** The Fc: two grey columns, plus the double orange hinge above them. */
   function Fc() {
-    const l = lattice('fc');
-    const homodimer = verdict.fc !== 'heterodimer';
+    const l = lattice(state.format.fc === 'none' ? 'fc' : state.format.fc);
+    const homodimer = dimer !== 'heterodimer';
+    const fcBb = state.format.fc !== 'none' ? state.format.fc : null;
+    const placed = !!fcBb;
     const hingeSet = (['left', 'right'] as ArmId[]).every((arm) => {
       const ref = slotRef(arm, 'hinge', 'heavy');
       const slot = ref.chain && ref.slotIndex >= 0 ? ref.chain.slots[ref.slotIndex] : undefined;
@@ -394,7 +416,36 @@ export function DesignPad() {
     });
 
     return (
-      <g>
+      <g
+        data-tip={
+          fcBb
+            ? `${bbDef(fcBb).label} on the scaffold — ${bbDef(fcBb).description}`
+            : 'Empty Fc scaffold — drag a Homo-Fc or Hetero-Fc from the palette onto it'
+        }
+        onDragOver={(e) => {
+          if (e.dataTransfer.types.includes(FC_DRAG_TYPE) || e.dataTransfer.types.includes(BB_DRAG_TYPE)) {
+            if (e.dataTransfer.types.includes(FC_DRAG_TYPE)) {
+              e.preventDefault();
+              setOverFc(true);
+            }
+          }
+        }}
+        onDragLeave={() => setOverFc(false)}
+        onDrop={dropFcBlock}
+      >
+        {(overFc || !placed) && (
+          <rect
+            x={FC.cx - COL_PITCH - GAP}
+            y={FC.top - GAP}
+            width={COL_PITCH * 2 + GAP * 2}
+            height={2 * DOMAIN_H + GAP * 3}
+            rx={CORNER_R * 2}
+            fill={overFc ? 'rgba(124, 221, 206, 0.12)' : 'none'}
+            stroke={overFc ? SELECTION : '#4B4B4B'}
+            strokeWidth={STROKE_W * 1.5}
+            strokeDasharray={overFc ? undefined : `${GAP / 2} ${GAP / 2}`}
+          />
+        )}
         <g transform={`translate(${FC.cx - COL_PITCH / 2} ${FC_BOTTOM})`}>
           {Array.from({ length: 2 }, (_, col) => (
             <line
@@ -487,15 +538,18 @@ export function DesignPad() {
         {BB_LIBRARY.filter((def) => def.kind !== 'empty' && def.kind !== 'fc').map((def) => (
           <button
             key={def.kind}
-            className="bb-card"
+            className={`bb-card${state.format.fc === def.kind ? ' placed' : ''}`}
             draggable
             data-tip={`${def.description}${
-              def.fusesOnly
-                ? ' — drag it onto a block already on the pad to fuse it there'
-                : ' — drag it onto either arm to place it'
+              def.scaffold
+                ? ' — drag it onto the Fc at the bottom of the pad'
+                : def.fusesOnly
+                  ? ' — drag it onto a block already on the pad to fuse it there'
+                  : ' — drag it onto either arm to place it'
             }`}
             onDragStart={(e) => {
               e.dataTransfer.setData(BB_DRAG_TYPE, def.kind);
+              if (def.scaffold) e.dataTransfer.setData(FC_DRAG_TYPE, def.kind);
               e.dataTransfer.effectAllowed = 'copy';
             }}
           >
@@ -553,7 +607,11 @@ export function DesignPad() {
         </div>
       </div>
 
-      <div className={`status-banner ${verdict.symmetric ? 'pass' : 'warn'}`}>{verdict.detail}</div>
+      <div className={`status-banner ${verdict.symmetric ? 'pass' : 'warn'}`}>
+        {state.format.fc === 'none'
+          ? verdict.detail
+          : `${bbDef(state.format.fc).label} on the scaffold. ${verdict.detail}`}
+      </div>
 
       {needLight.length > 0 && (
         <div className="lc">
@@ -694,9 +752,10 @@ export function DesignPad() {
 
       <p className="pair-note">
         Domains are the same rounded box throughout, notched where the domain is variable. Drag a
-        building block onto an arm to place it, or a sequence component from the registry straight
-        onto a domain. Arms splay {ARM_TILT}° off vertical with the N-terminus at the top, and an
-        outlined domain is one still waiting for a sequence.
+        building block onto an arm to place it, a Homo-Fc or Hetero-Fc onto the scaffold, or a
+        sequence component from the registry straight onto a domain. Arms splay {ARM_TILT}° off
+        vertical with the N-terminus at the top, and an outlined domain is one still waiting for a
+        sequence.
       </p>
     </Panel>
   );
@@ -727,7 +786,8 @@ function PaletteGlyph({ bb }: { bb: BbKind }) {
   const l = lattice(bb);
   const box = latticeBox(l);
   const pad = GAP;
-  const pair = TARGET_SLOTS[0];
+  const pair = isFcScaffold(bb) ? NEUTRAL : TARGET_SLOTS[0];
+  const sameShade = bb === 'homofc';
 
   return (
     <svg
@@ -753,7 +813,7 @@ function PaletteGlyph({ bb }: { bb: BbKind }) {
         <path
           key={`${cell.type}-${cell.col}-${cell.row}`}
           d={domainPath(cellBox(cell, l.rows), cell.lozenge ? LOZENGE_R : CORNER_R, cell.notch)}
-          fill={cell.col === 0 ? pair.base : pair.tint}
+          fill={sameShade || cell.col === 0 ? pair.base : pair.tint}
         />
       ))}
       {l.disulfide && (

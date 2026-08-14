@@ -353,5 +353,6 @@ export function initialFormat(): FormatDesign {
     },
     formatId: null,
     moleculeId: null,
+    fc: 'none',
   };
 }

@@ -155,6 +155,8 @@ export type BenchNode = BenchChain | BenchGroup;
  * BioGlyph building blocks (docs.bioglyph.app — Design Pad). Shape encodes the
  * building block, color encodes the sequence/target it carries.
  */
+export type FcBbKind = 'homofc' | 'heterofc';
+
 export type BbKind =
   | 'fab'
   | 'scfab'
@@ -167,6 +169,7 @@ export type BbKind =
   | 'reagent'
   | 'tag'
   | 'fc'
+  | FcBbKind
   | 'empty';
 
 export type ArmId = 'left' | 'right';
@@ -195,6 +198,8 @@ export type LightChainMode = 'common' | 'per-arm' | 'unset';
  */
 export interface FormatDesign {
   arms: Record<ArmId, ArmDesign>;
+  /** The Fc scaffold building block, chosen on the pad rather than inferred. */
+  fc: FcBbKind | 'none';
   /** Format identity is reused whenever the same format recurs. */
   formatId: string | null;
   /** The molecule built from this format's registered chains, once registered. */

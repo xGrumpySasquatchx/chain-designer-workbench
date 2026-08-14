@@ -203,6 +203,8 @@ export function lattice(bb: BbKind): Lattice {
         disulfide: false,
       };
     case 'fc':
+    case 'homofc':
+    case 'heterofc':
       return {
         cells: [
           ig('ch2', 0, 0, 'heavy'),

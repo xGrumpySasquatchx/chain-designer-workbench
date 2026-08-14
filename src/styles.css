@@ -1036,7 +1036,7 @@ body.resizing-v .panel-grip::after {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
-  max-height: 188px;
+  max-height: 228px;
   overflow-y: auto;
   margin-bottom: 8px;
   flex: none;
@@ -1052,6 +1052,11 @@ body.resizing-v .panel-grip::after {
   flex-direction: column;
   align-items: center;
   gap: 3px;
+}
+
+.bb-card.placed {
+  outline: 1px solid #7cddce;
+  outline-offset: -1px;
 }
 
 .bb-card:hover {

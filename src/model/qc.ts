@@ -1,4 +1,4 @@
-import { bbDef, ch3Role, chainTarget, symmetry } from './bioglyph';
+import { bbDef, ch3Role, chainTarget, fcPairing, scaffoldFc, symmetry } from './bioglyph';
 import { armsNeedingLight, lightChainMode, moleculeReadiness } from './molecule';
 import { PART_LABELS, PART_LINEAGE } from './parts';
 import {
@@ -32,6 +32,7 @@ export function runFormatQc(
   const verdict = symmetry(format, chains, registry);
   const left = format.arms.left;
   const right = format.arms.right;
+  const dimer = scaffoldFc(format, chains, registry);
 
   checks.push({
     id: 'arms',
@@ -41,10 +42,31 @@ export function runFormatQc(
   });
 
   checks.push({
+    id: 'fc-bb',
+    label:
+      format.fc === 'none'
+        ? 'Fc building block'
+        : format.fc === 'homofc'
+          ? 'Homo-Fc on the scaffold'
+          : 'Hetero-Fc on the scaffold',
+    status: format.fc === 'none' ? 'warn' : 'pass',
+    detail:
+      format.fc === 'none'
+        ? `${verdict.detail} Drag a Homo-Fc or Hetero-Fc onto the scaffold to choose.`
+        : `${bbDef(format.fc).label} placed. ${verdict.detail}`,
+  });
+
+  checks.push({
     id: 'symmetry',
     label: verdict.symmetric ? 'Symmetric — homodimeric Fc' : 'Asymmetric — heterodimeric Fc',
-    status: 'pass',
-    detail: verdict.detail,
+    status:
+      format.fc !== 'none' && fcPairing(format.fc) !== verdict.fc && verdict.fc !== 'none'
+        ? 'warn'
+        : 'pass',
+    detail:
+      format.fc !== 'none' && fcPairing(format.fc) !== verdict.fc && verdict.fc !== 'none'
+        ? `Arms call for a ${verdict.fc}; ${bbDef(format.fc).label} is on the scaffold.`
+        : verdict.detail,
   });
 
   const roleOf = (chainId: string | null) => {
@@ -55,7 +77,7 @@ export function runFormatQc(
   const leftRole = roleOf(left.heavyChainId);
   const rightRole = roleOf(right.heavyChainId);
 
-  if (verdict.fc === 'heterodimer') {
+  if (dimer === 'heterodimer') {
     const paired =
       (leftRole === 'knob' && rightRole === 'hole') || (leftRole === 'hole' && rightRole === 'knob');
     checks.push({
@@ -66,7 +88,7 @@ export function runFormatQc(
         ? `${leftRole} on the left arm, ${rightRole} on the right`
         : `An asymmetric format needs a knob on one heavy chain and a hole on the other; currently ${leftRole ?? 'unset'} and ${rightRole ?? 'unset'}.`,
     });
-  } else if (verdict.fc === 'homodimer' && left.bb !== 'empty') {
+  } else if (dimer === 'homodimer' && left.bb !== 'empty') {
     const engineered = leftRole === 'knob' || leftRole === 'hole';
     checks.push({
       id: 'knob-hole',

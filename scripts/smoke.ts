@@ -284,6 +284,33 @@ check(
   tagged.chains[HEAVY].slots.some((s) => s.type === 'tag'),
 );
 
+console.log('\n— Fc building blocks sit on the scaffold —');
+check('Homo-Fc and Hetero-Fc are in the palette', bbDef('homofc').scaffold === true && bbDef('heterofc').scaffold === true);
+check('the opening format has no Fc building block yet', pad.format.fc === 'none');
+const withHomo = run(pad, { type: 'set-fc-bb', bb: 'homofc' });
+check('placing Homo-Fc does not register a format', withHomo.format.formatId === null && withHomo.format.moleculeId === null);
+check(
+  'Homo-Fc writes wild-type CH3 on both heavy chains',
+  withHomo.chains[HEAVY].slots.find((s) => s.type === 'ch3')?.blockIds[0] === 'BB-0072' &&
+    withHomo.chains[HEAVY_B].slots.find((s) => s.type === 'ch3')?.blockIds[0] === 'BB-0072',
+);
+const withHetero = run(pad, { type: 'set-fc-bb', bb: 'heterofc' });
+check(
+  'Hetero-Fc writes knob and hole across the two heavy chains',
+  withHetero.chains[HEAVY].slots.find((s) => s.type === 'ch3')?.blockIds[0] === 'BB-0070' &&
+    withHetero.chains[HEAVY_B].slots.find((s) => s.type === 'ch3')?.blockIds[0] === 'BB-0071',
+);
+check(
+  'placing Hetero-Fc still leaves registration to the designer',
+  withHetero.format.fc === 'heterofc' && !withHetero.format.formatId,
+);
+check(
+  'Hetero-Fc on an asymmetric format passes CH3 pairing',
+  runFormatQc(withHetero.format, withHetero.chains, withHetero.registry).checks.find(
+    (c) => c.id === 'knob-hole',
+  )?.status === 'pass',
+);
+
 console.log('\n— format identity is reused, not re-minted —');
 let fmt = run(pad, { type: 'register-format' });
 const firstFormat = fmt.format.formatId;
@@ -563,6 +590,7 @@ check(
   'the two-chain Fab is held by a disulfide, the single-chain one by a linker',
   fab.disulfide && !fab.staple && lattice('scfab').staple && !lattice('scfab').disulfide,
 );
+check('Homo-Fc and Hetero-Fc share the four-domain Fc lattice', lattice('homofc').cols === 2 && lattice('heterofc').rows === 2);
 check(
   'the crossover Fab puts CL on the heavy chain',
   lattice('xfab').cells.some((c) => c.type === 'cl' && c.side === 'heavy'),

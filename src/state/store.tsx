@@ -9,7 +9,7 @@ import {
   relayoutSlots,
   type Counters,
 } from '../model/registry';
-import { armSlots, bbDef, chainTarget, formatName, formatSignature, symmetry } from '../model/bioglyph';
+import { armSlots, bbDef, chainTarget, FC_PARTS, formatName, formatSignature, isFcScaffold, scaffoldFc, symmetry } from '../model/bioglyph';
 import { enumerateVariants, variantLabel } from '../model/combinatorics';
 import {
   armsNeedingLight,
@@ -30,6 +30,7 @@ import type {
   BenchNode,
   ChainDesign,
   ChainKind,
+  FcBbKind,
   FormatDesign,
   Insert,
   PartType,
@@ -108,6 +109,8 @@ export type Action =
   | { type: 'set-pad-color'; mode: 'target' | 'part' }
   | { type: 'set-arm-bb'; arm: ArmId; bb: BbKind }
   | { type: 'fuse-bb'; arm: ArmId; bb: BbKind }
+  /** Place a Homo-Fc or Hetero-Fc on the scaffold. Does not register the format. */
+  | { type: 'set-fc-bb'; bb: FcBbKind }
   /** Whether the arms share one light chain, carry one each, or have none. */
   | {
       type: 'choose-light-chain';
@@ -629,6 +632,7 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, padColor: action.mode };
 
     case 'set-arm-bb': {
+      if (isFcScaffold(action.bb)) return state;
       const arm = state.format.arms[action.arm];
       const def = bbDef(action.bb);
       const chains = { ...state.chains };
@@ -659,6 +663,7 @@ export function reducer(state: AppState, action: Action): AppState {
       }
 
       const format: FormatDesign = {
+        ...state.format,
         arms: { ...state.format.arms, [action.arm]: nextArm },
         // Changing the shape changes the format, so its identity is re-derived.
         formatId: null,
@@ -669,6 +674,37 @@ export function reducer(state: AppState, action: Action): AppState {
         chains,
         format,
         log: log(state, 'edit', `${def.label} placed on the ${action.arm} arm`),
+      };
+    }
+
+    case 'set-fc-bb': {
+      const parts = FC_PARTS[action.bb];
+      const chains = { ...state.chains };
+      const fill = (chainId: string | null, ch3: string) => {
+        if (!chainId || !chains[chainId]) return;
+        const chain = chains[chainId];
+        chains[chainId] = {
+          ...chain,
+          slots: chain.slots.map((s) => {
+            if (s.type === 'ch3') return { ...s, blockIds: [ch3] };
+            if (s.type === 'ch2' && !s.blockIds.length) return { ...s, blockIds: [parts.ch2] };
+            return s;
+          }),
+          constructIds: [],
+        };
+      };
+      fill(state.format.arms.left.heavyChainId, parts.leftCh3);
+      fill(state.format.arms.right.heavyChainId, parts.rightCh3);
+      return {
+        ...state,
+        chains,
+        format: {
+          ...state.format,
+          fc: action.bb,
+          formatId: null,
+          moleculeId: null,
+        },
+        log: log(state, 'edit', `${bbDef(action.bb).label} placed on the Fc scaffold`),
       };
     }
 
@@ -688,6 +724,7 @@ export function reducer(state: AppState, action: Action): AppState {
         ...state,
         chains,
         format: {
+          ...state.format,
           arms: { ...state.format.arms, [action.arm]: nextArm },
           formatId: null,
           moleculeId: null,
@@ -781,7 +818,7 @@ export function reducer(state: AppState, action: Action): AppState {
         counters,
         chains,
         bench,
-        format: { arms, formatId: null, moleculeId: null },
+        format: { ...state.format, arms, formatId: null, moleculeId: null },
         log: log(state, minted.length ? 'mint' : 'edit', `Light chain choice - ${detail}`),
       };
     }
@@ -793,6 +830,7 @@ export function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         format: {
+          ...state.format,
           arms: { ...state.format.arms, [action.arm]: arm },
           formatId: null,
           moleculeId: null,
@@ -804,6 +842,7 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'register-format': {
       const signature = formatSignature(state.format, state.chains, state.registry);
       const existing = Object.values(state.registry.formats).find((f) => f.signature === signature);
+      const dimer = scaffoldFc(state.format, state.chains, state.registry);
       const verdict = symmetry(state.format, state.chains, state.registry);
       if (existing) {
         return {
@@ -824,7 +863,7 @@ export function reducer(state: AppState, action: Action): AppState {
               id,
               name: formatName(state.format, state.chains, state.registry),
               signature,
-              fc: verdict.fc,
+              fc: dimer,
               symmetric: verdict.symmetric,
             },
           },
