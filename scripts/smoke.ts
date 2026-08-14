@@ -211,6 +211,40 @@ check(
   bench.bench.map((n) => n.id).join(' → '),
 );
 
+console.log('\n— unregistered chains can leave the bench —');
+let draft = run(createInitialState(), { type: 'add-chain', kind: 'heavy' });
+const minted = draft.bench[draft.bench.length - 1].id;
+check('adding a heavy chain puts a draft on the bench', !!draft.chains[minted] && draft.chains[minted].regIds.length === 0);
+draft = run(draft, { type: 'remove-chain', chainId: minted });
+check('removing an unregistered chain drops it from the bench', !draft.chains[minted] && !draft.bench.some((n) => n.id === minted));
+check(
+  'a registered chain stays put',
+  run(createInitialState(), { type: 'remove-chain', chainId: LIGHT }).chains[LIGHT]?.regIds[0] ===
+    'REG-0001',
+);
+const unbound = run(createInitialState(), { type: 'remove-chain', chainId: HEAVY });
+check(
+  'removing a chain bound to an arm clears that arm',
+  unbound.format.arms.left.bb === 'empty' && unbound.format.arms.left.heavyChainId === null,
+);
+check('focus moves to a chain that is still on the bench', !!unbound.chains[unbound.focusChainId]);
+draft = run(
+  createInitialState(),
+  { type: 'select', id: HEAVY, mode: 'single' },
+  { type: 'select', id: HEAVY_B, mode: 'toggle' },
+  { type: 'group-selected' },
+  { type: 'remove-chain', chainId: HEAVY },
+);
+check(
+  'removing the last-but-one chain from a group leaves the rest grouped',
+  draft.bench.some((n) => n.kind === 'group' && n.children.length === 1 && n.children[0] === HEAVY_B),
+);
+draft = run(draft, { type: 'remove-chain', chainId: HEAVY_B });
+check(
+  'removing the last grouped draft dissolves the empty group',
+  draft.bench.every((n) => n.kind === 'chain') && !draft.chains[HEAVY_B],
+);
+
 console.log('\n— resolution is a view setting —');
 let view = run(createInitialState(), { type: 'set-resolution', level: 3 });
 check('global resolution changes', view.resolution === 3);

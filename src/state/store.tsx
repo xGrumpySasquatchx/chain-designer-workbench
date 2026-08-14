@@ -88,6 +88,8 @@ export type Action =
   | { type: 'edit-construct'; chainId: string }
   | { type: 'register'; chainId: string }
   | { type: 'add-chain'; kind: ChainKind }
+  /** Drop an unregistered chain from the bench. Registered inventory stays. */
+  | { type: 'remove-chain'; chainId: string }
   | { type: 'select'; id: string; mode: 'single' | 'toggle' | 'range' }
   | { type: 'clear-selection' }
   | { type: 'group-selected' }
@@ -182,7 +184,8 @@ function removeFromBench(bench: BenchNode[], id: string): BenchNode[] {
     .filter((n) => n.id !== id)
     .map((n) =>
       n.kind === 'group' ? { ...n, children: n.children.filter((c) => c !== id) } : n,
-    );
+    )
+    .filter((n) => n.kind !== 'group' || n.children.length > 0);
 }
 
 function insertIntoBench(
@@ -469,6 +472,48 @@ export function reducer(state: AppState, action: Action): AppState {
         chains: { ...state.chains, [id]: chain },
         bench: [...state.bench, { kind: 'chain', id }],
         focusChainId: id,
+      };
+    }
+
+    case 'remove-chain': {
+      const chain = state.chains[action.chainId];
+      if (!chain || chain.regIds.length) return state;
+
+      const chains = { ...state.chains };
+      delete chains[action.chainId];
+      const bench = removeFromBench(state.bench, action.chainId);
+      const nextFocus =
+        state.focusChainId === action.chainId
+          ? (flatOrder(bench).find((id) => chains[id]) ?? '')
+          : state.focusChainId;
+
+      let formatTouched = false;
+      const arms = { ...state.format.arms };
+      (['left', 'right'] as ArmId[]).forEach((armId) => {
+        const arm = arms[armId];
+        if (arm.heavyChainId === action.chainId) {
+          arms[armId] = { ...arm, bb: 'empty', heavyChainId: null, lightChainId: null, fused: [] };
+          formatTouched = true;
+        } else if (arm.lightChainId === action.chainId) {
+          arms[armId] = { ...arm, lightChainId: null };
+          formatTouched = true;
+        }
+      });
+
+      return {
+        ...state,
+        chains,
+        bench,
+        format: formatTouched
+          ? { ...state.format, arms, formatId: null, moleculeId: null }
+          : state.format,
+        selection: state.selection.filter((id) => id !== action.chainId),
+        lastSelectedId: state.lastSelectedId === action.chainId ? null : state.lastSelectedId,
+        focusChainId: nextFocus,
+        activeSlot: state.activeSlot?.chainId === action.chainId ? null : state.activeSlot,
+        galleryChainId: state.galleryChainId === action.chainId ? null : state.galleryChainId,
+        flashChainId: state.flashChainId === action.chainId ? null : state.flashChainId,
+        log: log(state, 'edit', `${chain.name} removed from the bench`),
       };
     }
 

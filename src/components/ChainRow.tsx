@@ -141,7 +141,18 @@ export function ChainRow({ chainId, inGroup, onRowDragOver, onRowDrop, dropBefor
       >
         <NoteIcon />
       </button>
-      {inGroup && (
+      {chain.regIds.length === 0 ? (
+        <button
+          className="icon-btn danger"
+          data-tip="Remove this unregistered chain from the bench. Registered inventory cannot be deleted from here."
+          onClick={(e) => {
+            e.stopPropagation();
+            dispatch({ type: 'remove-chain', chainId });
+          }}
+        >
+          <CloseIcon />
+        </button>
+      ) : inGroup ? (
         <button
           className="icon-btn danger"
           data-tip="Eject this chain from the group, leaving it on the bench"
@@ -152,7 +163,7 @@ export function ChainRow({ chainId, inGroup, onRowDragOver, onRowDrop, dropBefor
         >
           <CloseIcon />
         </button>
-      )}
+      ) : null}
     </div>
   );
 }

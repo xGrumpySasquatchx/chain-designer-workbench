@@ -233,7 +233,8 @@ export function Bench() {
       <p className="hint">
         Click a row to focus it, shift-click for a range, cmd-click to toggle one in or out. The
         chevron overrides resolution for that row alone; an amber dot means a part is set at a level
-        you are not currently viewing. The × on a grouped row ejects just that chain.
+        you are not currently viewing. The × removes an unregistered chain from the bench; on a
+        registered grouped row it ejects just that chain.
       </p>
     </Panel>
   );
