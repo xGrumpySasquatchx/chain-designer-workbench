@@ -22,11 +22,13 @@ export function SlotCell({ chainId, slotIndex, slot, fromVector }: Props) {
   const filled = slot.blockIds.length > 0;
   const names = slot.blockIds.map((id) => state.registry.blocks[id]?.name ?? id);
 
-  const title = filled
-    ? `${PART_LABELS[slot.type]}: ${names.join(' / ')}${slot.blockIds.length > 1 ? ` — ${slot.blockIds.length} stacked options` : ''} (double-click to clear)`
+  const tip = filled
+    ? `${PART_LABELS[slot.type]}: ${names.join(' / ')}${
+        slot.blockIds.length > 1 ? ` — ${slot.blockIds.length} stacked options` : ''
+      }. Click to select it everywhere, double-click to clear it.`
     : fromVector
-      ? `${PART_LABELS[slot.type]} supplied by the backbone`
-      : `${PART_LABELS[slot.type]} — empty`;
+      ? `${PART_LABELS[slot.type]} is supplied by the backbone, so this slot does not need a part`
+      : `${PART_LABELS[slot.type]} — empty. Drag a part here, or click the slot and then a part in the registry.`;
 
   return (
     <button
@@ -39,7 +41,7 @@ export function SlotCell({ chainId, slotIndex, slot, fromVector }: Props) {
       ]
         .filter(Boolean)
         .join(' ')}
-      title={title}
+      data-tip={tip}
       onClick={(e) => {
         e.stopPropagation();
         // Linked selection: the pad, the map and the rail all follow this.

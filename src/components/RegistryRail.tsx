@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Panel } from './Panel';
 import { COLORS, PART_LABELS, chipShape, inAlphabet, lengthIn } from '../model/parts';
 import { useApp, useDispatch } from '../state/store';
 import type { Alphabet, BuildingBlock, ChainDesign, PartType, Registry } from '../model/types';
@@ -11,6 +12,12 @@ const TAB_LABELS: Record<Tab, string> = {
   regions: 'Regions',
   inserts: 'Inserts',
   vectors: 'Vectors',
+};
+
+const TAB_TIPS: Record<Tab, string> = {
+  regions: 'Individual sequence components (BB-id) grouped by part type — drag or click one into a slot',
+  inserts: 'Saved insert compositions (INS-id) — applying one fills every component at once',
+  vectors: 'Vector backbones (VEC-id). A backbone can supply constant regions, so those slots stop needing parts',
 };
 
 /** Isotypes already committed by the chain's parts and backbone. */
@@ -103,21 +110,21 @@ export function RegistryRail() {
   ];
 
   return (
-    <div className="panel grow">
-      <p className="panel-title">
-        Parts registry
-        <span className="count">{chain ? chain.name : 'no chain focused'}</span>
-      </p>
-
+    <Panel
+      title="Parts registry"
+      tip="Everything you can build from: sequence components, saved inserts and vector backbones"
+      trailing={chain ? chain.name : 'no chain focused'}
+      grow
+    >
       <div className="seg full" role="radiogroup" aria-label="Component vocabulary">
         {(['nt', 'aa'] as Alphabet[]).map((a) => (
           <button
             key={a}
             className={state.alphabet === a ? 'active' : ''}
-            title={
+            data-tip={
               a === 'nt'
-                ? 'Nucleotide components: regulatory elements and coding regions, in bp'
-                : 'Amino-acid components: protein domains only, in residues'
+                ? 'Nucleotide vocabulary: regulatory elements and coding regions, sized in base pairs'
+                : 'Amino-acid vocabulary: protein domains only, sized in residues — promoters and terminators drop out'
             }
             onClick={() => dispatch({ type: 'set-alphabet', alphabet: a })}
           >
@@ -128,7 +135,12 @@ export function RegistryRail() {
 
       <div className="tabs">
         {(Object.keys(TAB_LABELS) as Tab[]).map((t) => (
-          <button key={t} className={t === tab ? 'active' : ''} onClick={() => setTab(t)}>
+          <button
+            key={t}
+            className={t === tab ? 'active' : ''}
+            data-tip={TAB_TIPS[t]}
+            onClick={() => setTab(t)}
+          >
             {TAB_LABELS[t]}
           </button>
         ))}
@@ -136,6 +148,7 @@ export function RegistryRail() {
       <input
         className="search"
         placeholder="Search by name or feature…"
+        data-tip="Filter by name, feature, target or isotype — for example “knob”, “CD3” or “IgG4”"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
       />
@@ -167,10 +180,15 @@ export function RegistryRail() {
                         .filter(Boolean)
                         .join(' ')}
                       draggable
-                      title={
+                      data-tip={
                         compatible
-                          ? `${block.features.join(', ')} · ${lengthIn(block.lengthBp, state.alphabet)}`
-                          : `Incompatible with ${chain?.name}: ${block.isotype ?? block.lineage}`
+                          ? `${block.name} — ${block.features.join(', ')} · ${lengthIn(
+                              block.lengthBp,
+                              state.alphabet,
+                            )}. Click to drop it into the ${PART_LABELS[block.type]} slot, drag it onto a slot or a domain, shift-click to stack a second option.`
+                          : `Incompatible with ${chain?.name}: this part is ${
+                              block.isotype ?? block.lineage
+                            } and the chain has already committed to something else`
                       }
                       onDragStart={(e) => {
                         e.dataTransfer.setData(PART_DRAG_TYPE, block.id);
@@ -209,7 +227,13 @@ export function RegistryRail() {
                 <button
                   key={insert.id}
                   className={`chip${usable ? '' : ' incompatible'}`}
-                  title={`${insert.features.join(', ')} — click to apply every component`}
+                  data-tip={
+                    usable
+                      ? `${insert.features.join(', ')} — click to fill every component on ${
+                          chain?.name ?? 'the focused chain'
+                        } at once`
+                      : `This insert codes a ${insert.kind} chain, so it cannot be applied to ${chain?.name}`
+                  }
                   onClick={() =>
                     chain && usable && dispatch({ type: 'apply-insert', chainId: chain.id, insertId: insert.id })
                   }
@@ -237,7 +261,15 @@ export function RegistryRail() {
                 <button
                   key={vector.id}
                   className={`chip${chain?.vectorId === vector.id ? ' active' : ''}`}
-                  title={`${vector.provides.length ? `supplies ${vector.provides.join(', ')}` : 'empty backbone'} · ${vector.resistance}`}
+                  data-tip={`${
+                    vector.provides.length
+                      ? `Supplies ${vector.provides
+                          .map((p) => PART_LABELS[p])
+                          .join(', ')} — those slots no longer need parts`
+                      : 'Empty backbone: every component has to come from the insert'
+                  } · ${vector.resistance} · ${vector.lengthBp.toLocaleString()} bp. Click to assign it to ${
+                    chain?.name ?? 'the focused chain'
+                  }.`}
                   onClick={() =>
                     chain && dispatch({ type: 'set-vector', chainId: chain.id, vectorId: vector.id })
                   }
@@ -265,6 +297,7 @@ export function RegistryRail() {
             <button
               className="btn"
               style={{ marginTop: 8 }}
+              data-tip="Mint a new empty backbone (VEC-id) for this chain when no existing vector fits"
               onClick={() =>
                 chain &&
                 dispatch({
@@ -287,6 +320,6 @@ export function RegistryRail() {
         Drag a part onto a row slot or onto the design pad; clicking drops it into the matching slot
         on the focused chain, and shift-click stacks a second option.
       </p>
-    </div>
+    </Panel>
   );
 }

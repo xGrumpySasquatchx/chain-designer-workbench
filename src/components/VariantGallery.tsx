@@ -25,6 +25,7 @@ export function VariantGallery() {
           <button
             className="btn primary"
             disabled={!chain.vectorId || chain.constructIds.length > 0}
+            data-tip={`Assemble every one of these ${variants.length} variants against the backbone, minting a CC-id each`}
             onClick={() => dispatch({ type: 'assemble', chainId: chain.id })}
           >
             Assemble all
@@ -32,11 +33,12 @@ export function VariantGallery() {
           <button
             className="btn"
             disabled={!chain.constructIds.length || chain.regIds.length > 0}
+            data-tip="Register every assembled variant into inventory, minting a REG-id each"
             onClick={() => dispatch({ type: 'register', chainId: chain.id })}
           >
             Register all
           </button>
-          <button className="btn" onClick={close}>
+          <button className="btn" data-tip="Close the gallery and return to the bench" onClick={close}>
             Close
           </button>
         </div>
@@ -54,7 +56,7 @@ export function VariantGallery() {
                       <span
                         key={i}
                         className="variant-chip"
-                        title={`${PART_LABELS[slot.type]}: ${
+                        data-tip={`${PART_LABELS[slot.type]}: ${
                           blockId ? state.registry.blocks[blockId]?.name : 'empty'
                         }`}
                         style={{

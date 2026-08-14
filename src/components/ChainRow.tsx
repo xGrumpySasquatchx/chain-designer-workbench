@@ -58,10 +58,17 @@ export function ChainRow({ chainId, inGroup, onRowDragOver, onRowDrop, dropBefor
       {hiddenCombinatorics && (
         <span
           className="hidden-dot"
-          title={`A part is set at a resolution above "${RESOLUTION_LABELS[resolution]}"`}
+          data-tip={`A part is set at a finer resolution than “${RESOLUTION_LABELS[resolution]}”, so it is not shown on this row`}
         />
       )}
-      <span className="row-label" title={chain.note ? `Note: ${chain.note}` : chain.name}>
+      <span
+        className="row-label"
+        data-tip={
+          chain.note
+            ? `Note: ${chain.note}`
+            : `${chain.name} — ${chain.kind} chain. Click to focus it, shift-click for a range, cmd-click to toggle it.`
+        }
+      >
         {chain.name}
         <span className="row-kind"> · {chain.kind}</span>
       </span>
@@ -83,7 +90,7 @@ export function ChainRow({ chainId, inGroup, onRowDragOver, onRowDrop, dropBefor
       {variants > 1 && (
         <button
           className="badge warn"
-          title="Open the variant gallery for this chain"
+          data-tip={`${variants} combinations come out of the stacked options on this chain — open the gallery to see them`}
           onClick={(e) => {
             e.stopPropagation();
             dispatch({ type: 'open-gallery', chainId });
@@ -93,12 +100,18 @@ export function ChainRow({ chainId, inGroup, onRowDragOver, onRowDrop, dropBefor
         </button>
       )}
       {chain.regIds.length > 0 && (
-        <span className="badge reg" title={chain.regIds.join(', ')}>
+        <span
+          className="badge reg"
+          data-tip={`Registered in inventory as ${chain.regIds.join(', ')}`}
+        >
           {chain.regIds.length > 1 ? `${chain.regIds.length} REG` : chain.regIds[0]}
         </span>
       )}
       {chain.regIds.length === 0 && chain.constructIds.length > 0 && (
-        <span className="badge cc" title={chain.constructIds.join(', ')}>
+        <span
+          className="badge cc"
+          data-tip={`Assembled as ${chain.constructIds.join(', ')} — not yet registered`}
+        >
           {chain.constructIds.length > 1
             ? `${chain.constructIds.length} CC`
             : chain.constructIds[0]}
@@ -107,7 +120,9 @@ export function ChainRow({ chainId, inGroup, onRowDragOver, onRowDrop, dropBefor
 
       <button
         className="icon-btn"
-        title={`Resolution for this row: ${RESOLUTION_LABELS[resolution]}${chain.resolutionOverride ? ' (overridden)' : ''}`}
+        data-tip={`Resolution for this row alone: ${RESOLUTION_LABELS[resolution]}${
+          chain.resolutionOverride ? ' (overriding the bench setting)' : ''
+        }. Click to cycle it.`}
         onClick={(e) => {
           e.stopPropagation();
           dispatch({ type: 'cycle-row-resolution', chainId });
@@ -117,7 +132,7 @@ export function ChainRow({ chainId, inGroup, onRowDragOver, onRowDrop, dropBefor
       </button>
       <button
         className={`icon-btn${chain.note ? ' has-note' : ''}`}
-        title={chain.note ? `Note: ${chain.note}` : 'Annotate this chain'}
+        data-tip={chain.note ? `Note: ${chain.note} — click to edit` : 'Attach a note to this chain'}
         onClick={(e) => {
           e.stopPropagation();
           const note = window.prompt(`Annotation for ${chain.name}:`, chain.note ?? '');
@@ -129,7 +144,7 @@ export function ChainRow({ chainId, inGroup, onRowDragOver, onRowDrop, dropBefor
       {inGroup && (
         <button
           className="icon-btn danger"
-          title="Eject this chain from the group"
+          data-tip="Eject this chain from the group, leaving it on the bench"
           onClick={(e) => {
             e.stopPropagation();
             dispatch({ type: 'eject', chainId });

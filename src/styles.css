@@ -81,36 +81,69 @@ button {
 .legend {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 8px 16px;
   margin-left: auto;
-  font-size: 10px;
+  font-size: 14px;
   color: var(--text-secondary);
-  max-width: 430px;
+  max-width: 620px;
   justify-content: flex-end;
 }
 
 .legend span {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 7px;
+  cursor: help;
 }
 
 .swatch {
-  width: 10px;
-  height: 10px;
-  border-radius: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
   display: inline-block;
   flex: none;
 }
 
 .columns {
   display: grid;
-  grid-template-columns: 252px minmax(0, 1fr) 344px;
-  grid-template-areas: 'rail bench inspector';
+  grid-template-columns: 252px 8px minmax(0, 1fr) 8px 344px;
+  grid-template-areas: 'rail res-rail bench res-inspector inspector';
   gap: 14px;
   padding: 14px;
   flex: 1;
   min-height: 0;
+}
+
+/* Column gutters: the grid gap already separates the columns, so the handle
+   sits inside its own track and only needs to be grabbable. */
+.col-resizer {
+  border-radius: 4px;
+  cursor: col-resize;
+  background: transparent;
+  transition: background 120ms ease;
+}
+
+.col-resizer:hover,
+body.resizing-h .col-resizer {
+  background: var(--border);
+}
+
+.res-rail {
+  grid-area: res-rail;
+}
+
+.res-inspector {
+  grid-area: res-inspector;
+}
+
+body.resizing-h {
+  cursor: col-resize;
+  user-select: none;
+}
+
+body.resizing-v {
+  cursor: ns-resize;
+  user-select: none;
 }
 
 .column {
@@ -144,6 +177,11 @@ button {
       'rail bench'
       'rail inspector';
   }
+
+  /* Below three columns the widths are decided by the layout, not by dragging. */
+  .col-resizer {
+    display: none;
+  }
 }
 
 @media (max-width: 820px) {
@@ -160,18 +198,44 @@ button {
 }
 
 .panel {
+  position: relative;
   background: var(--surface-2);
   border: 0.5px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 12px;
+  padding: 12px 12px 14px;
   flex: none;
-}
-
-.panel.grow {
-  flex: 1;
-  min-height: 0;
   display: flex;
   flex-direction: column;
+  min-height: 0;
+}
+
+/* A growing panel takes the slack, but never shrinks so far that its own
+   toolbar is unusable — the column scrolls instead. */
+.panel.grow {
+  flex: 1 1 auto;
+  min-height: 232px;
+}
+
+/* A panel given an explicit height scrolls its own body. */
+.panel.sized > .panel-body,
+.panel.grow > .panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.panel-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  flex: none;
 }
 
 .panel-title {
@@ -180,17 +244,134 @@ button {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--text-muted);
-  margin: 0 0 8px;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: help;
+}
+
+.panel-head .count,
+.panel-title .count {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-muted);
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
-.panel-title .count {
+.panel-btn {
+  border: 0.5px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  border-radius: 6px;
+  width: 22px;
+  height: 20px;
+  line-height: 1;
+  font-size: 12px;
+  cursor: pointer;
+  flex: none;
+  padding: 0;
+}
+
+.panel-head .count + .panel-btn {
+  margin-left: 0;
+}
+
+.panel-head > .panel-btn:nth-child(2) {
   margin-left: auto;
-  font-weight: 500;
-  letter-spacing: 0;
-  text-transform: none;
+}
+
+.panel-btn:hover {
+  border-color: var(--border-accent);
+  color: var(--text-accent);
+  background: var(--bg-accent);
+}
+
+/* The resize edge. Kept subtle until hovered so it never competes with content. */
+.panel-grip {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 0;
+  height: 9px;
+  cursor: ns-resize;
+  border-bottom-left-radius: var(--radius-lg);
+  border-bottom-right-radius: var(--radius-lg);
+}
+
+.panel-grip::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 3px;
+  width: 30px;
+  height: 3px;
+  border-radius: 2px;
+  transform: translateX(-50%);
+  background: transparent;
+  transition: background 120ms ease;
+}
+
+.panel-grip:hover::after,
+body.resizing-v .panel-grip::after {
+  background: var(--border-strong);
+}
+
+.panel-detached {
+  border: 0.5px dashed var(--border-strong);
+  border-radius: var(--radius);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.panel-detached p {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+
+/* ---------- popped-out window ---------- */
+
+.popout-root {
+  padding: 14px;
+  background: var(--surface-0);
+  min-height: 100vh;
+}
+
+.popout-panel {
+  height: auto;
+}
+
+/* ---------- tooltips ---------- */
+
+.tooltip {
+  position: fixed;
+  z-index: 60;
+  max-width: 280px;
+  padding: 6px 9px;
+  border-radius: 6px;
+  background: #2c2c2a;
+  color: #f7f6f3;
+  font-size: 11.5px;
+  line-height: 1.45;
+  pointer-events: none;
+  text-align: left;
+}
+
+.tooltip.below {
+  transform: translate(-50%, 0);
+}
+
+.tooltip.above {
+  transform: translate(-50%, -100%);
 }
 
 .hint {
@@ -832,50 +1013,129 @@ button {
   flex-wrap: wrap;
 }
 
-.bb-palette {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
+/* The pad follows BioGlyph's own chrome: a dark palette rail of cards beside a
+   flat dark canvas, with no grid behind the glyphs. */
+.bb-rail {
+  background: #2a2a2a;
+  border-radius: 10px;
+  padding: 8px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  max-height: 188px;
+  overflow-y: auto;
   margin-bottom: 8px;
-  padding-bottom: 8px;
-  border-bottom: 0.5px dashed var(--border);
+  flex: none;
 }
 
-.bb-chip {
-  font-size: 10.5px;
-  border: 0.5px solid var(--border-strong);
-  background: var(--surface-2);
-  border-radius: 999px;
-  padding: 3px 9px;
+.bb-card {
+  background: #4b4b4b;
+  border: none;
+  border-radius: 8px;
+  padding: 7px 4px 5px;
   cursor: grab;
-  color: var(--text-primary);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
 }
 
-.bb-chip:hover {
-  border-color: var(--border-accent);
-  background: var(--bg-accent);
+.bb-card:hover {
+  background: #545454;
 }
 
-.bb-chip:active {
+.bb-card:active {
   cursor: grabbing;
 }
 
-/* ---------- linear construct view ---------- */
-
-.linear-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin-bottom: 6px;
+.bb-card span {
+  font-size: 10px;
+  line-height: 1.2;
+  color: #a3a3a3;
+  text-align: center;
 }
 
-.linear-row {
+.bb-card:hover span {
+  color: #ffffff;
+}
+
+.dpad {
+  position: relative;
+  background: #212121;
+  border-radius: 10px;
+  padding: 4px;
+  margin-bottom: 8px;
+  flex: none;
+}
+
+.dpad-canvas {
   width: 100%;
   display: block;
 }
 
-.linear-stack.expanded .linear-row {
-  min-height: 74px;
+.dpad-chips {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  justify-content: flex-end;
+  max-width: 62%;
+}
+
+.dpad-chip {
+  border-radius: 999px;
+  padding: 2px 9px;
+  font-size: 9.5px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #ffffff;
+  cursor: help;
+}
+
+.dpad-tools {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.dpad-tool {
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 7px;
+  background: #2a2a2a;
+  color: #ffffff;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+
+.dpad-tool:hover {
+  background: #3d3d3d;
+}
+
+/* ---------- construct map ---------- */
+
+/* The Geneious viewer canvas is pure white, edge to edge, with the name gutter
+   drawn inside the SVG so it lines up with the tracks. */
+.gmap {
+  background: #ffffff;
+  border: 0.5px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 8px;
+  flex: none;
+}
+
+.gmap-svg {
+  width: 100%;
+  display: block;
 }
 
 /* ---------- qc ---------- */

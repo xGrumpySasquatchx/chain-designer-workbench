@@ -61,14 +61,21 @@ const KIND_FOR_PART: Partial<Record<PartType, FeatureKind>> = {
   cl: 'constant',
 };
 
+/**
+ * Geneious colours annotations per type, as a user preference rather than a
+ * fixed palette. Where its published screenshots show an unambiguous default we
+ * use it — CDS yellow, rep_origin azure, misc_feature grey — and where they show
+ * none, as for promoters, terminators and polyA signals, this app's own part
+ * taxonomy stands in.
+ */
 const BACKBONE_COLORS: Record<FeatureKind, string> = {
-  cds: '#9C998F',
-  regulatory: '#888780',
-  marker: '#A36F2D',
-  ori: '#6E8F1E',
-  mcs: '#B4B2A9',
+  cds: '#FFFF00',
+  marker: '#FFFF00',
+  ori: '#00A8F0',
+  mcs: '#A0A0A0',
+  regulatory: COLORS.promoter,
+  polyA: COLORS.term,
   constant: '#85B7EB',
-  polyA: '#888780',
 };
 
 /**
@@ -153,9 +160,12 @@ export function buildMap(chain: ChainDesign, registry: Registry): ConstructMapMo
   };
 }
 
-/** Ruler ticks at a round interval that keeps roughly 6–10 labels on screen. */
-export function rulerTicks(totalBp: number): number[] {
-  const target = totalBp / 8;
+/**
+ * Ruler ticks at a round interval — 1, 2 or 5 times a power of ten — chosen so
+ * the labels stay comfortably apart at the width available.
+ */
+export function rulerTicks(totalBp: number, labels = 8): number[] {
+  const target = totalBp / labels;
   const magnitude = Math.pow(10, Math.floor(Math.log10(Math.max(target, 1))));
   const step = [1, 2, 5, 10].map((m) => m * magnitude).find((s) => s >= target) ?? magnitude * 10;
   const ticks: number[] = [];

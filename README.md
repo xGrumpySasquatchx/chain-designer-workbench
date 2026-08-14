@@ -29,7 +29,7 @@ npm run lint
   shift-click range, cmd-click toggle), grouping, per-group ungroup, per-row eject, drag reordering,
   per-row and bulk annotation, and a three-level resolution control with per-row override and a
   hidden-combinatorics dot.
-- **Design pad** (right) — the molecule under design, at building-block or domain zoom. See below.
+- **Design pad** (right) — the molecule under design, drawn to BioGlyph's proportions. See below.
 - **Construct map** (right) — circular or linear for one construct, and a stacked linear comparison
   when several are selected. See below.
 - **Cloning loop** (top) — the process diagram, live: one node is active for the focused chain and
@@ -41,6 +41,20 @@ npm run lint
 - **Linked panels** — one selection is shared by every view. Clicking a bench slot, a domain on the
   pad or an annotation on the map selects the same component in all three, and the rail marks the
   group it belongs to.
+
+## Working the layout
+
+- **Adjustable panels.** Every panel drags from its bottom edge to set its own height; double-clicking
+  that edge returns it to fitting its contents. The two gutters between the columns drag sideways to
+  rebalance the registry, bench and inspector widths, within limits that keep each column usable.
+  Below three columns the layout decides the widths itself and the gutters retire.
+- **Pop-out panels.** The ⤢ control in a panel header moves that panel into its own window, carrying
+  the app's stylesheets with it, and the panel returns when the window closes. Where a host turns
+  `window.open` into a tab that never renders — Electron shells and embedded IDE browsers do this —
+  the panel detects that it would be invisible there and opens as a full-screen sheet instead.
+- **Tooltips everywhere.** Controls explain themselves on hover or keyboard focus, in context: a
+  disabled button says what is missing rather than just being grey, a part says how to place it, and
+  the colour legend doubles as the glossary of part types.
 
 ## Design pad — BioGlyph conventions
 
@@ -65,6 +79,43 @@ From [docs.bioglyph.app](https://docs.bioglyph.app/) (Design Pad, Quickstart):
   VL on one chain, a VHH drops CH1 and the light chain, an xFab crosses CL onto the heavy chain.
   Blocks already chosen for slots that survive the change are kept.
 
+### How it is drawn
+
+The BioGlyph documentation describes the pad's behaviour but specifies no geometry or colour values,
+so `src/model/dpad.ts` carries proportions measured from the published pad screenshots, expressed in
+`u`, a sixth of a domain width. `npm run smoke` asserts them, so a later refactor cannot drift away
+from the reference quietly.
+
+- **One primitive.** Every immunoglobulin domain is the same rounded rectangle, `6u × 11u` with a
+  corner radius of `0.5u`, and every block is a composition of it: a Fab is a two-by-two lattice, an
+  scFv a single row, a VHH one box. Columns and rows are one box plus a `2u` gap.
+- **The notch marks a variable domain.** VH, VL and VHH carry a slot `0.417 · W` wide and
+  `0.237 · H` deep, filleted at the corner radius on all four corners; the two at the top edge are
+  convex, which flares the mouth a radius wider on each side. Constant domains have no notch.
+  Non-immunoglobulin blocks reuse the same box at `0.28 · W`, which reads as a lozenge.
+- **Colour is the target, by slot.** The first target in a design is blue, the second green, the
+  third magenta, and each block draws its two chains as a base shade and a lighter tint of the same
+  hue. The Fc binds nothing, so it is grey — and the homodimer draws both columns in the same shade
+  while the heterodimer draws a shade against a tint, which is what the symmetry rule looks like.
+  Target chips over the canvas name the colours.
+- **Geometry that carries meaning.** The two-chain Fabs get the orange interchain disulfide bar a
+  unit above their bottom edge; the single-chain formats get the grey linker staple instead, running
+  up the channel between the columns and into the notch. The Fc's double orange hinge sits between
+  the two stems above CH2. Arms splay 28° off vertical with the N-terminus at the top, their stems
+  turning vertical at an elbow before descending into the Fc, and the left arm is the mirror variant
+  so the base column always faces in.
+- **Flat dark canvas.** `#212121`, with no grid or dots — sampling an empty region of a reference
+  screenshot returns that one colour and nothing else.
+
+Three things are ours rather than BioGlyph's, because the reference does not show them: a domain
+still waiting for a sequence is drawn outline-only (borrowing the outline mode BioGlyph uses for
+unmatched blocks in Search by Structure), a domain supplied by the backbone is drawn at reduced
+opacity, and the shared selection is a mint halo. An empty arm is a dashed drop target. The palette
+also has no published rendering for xFab, Mutein, Mini-protein, De novo, Reagent or Tag — the
+reference screenshots leave the palette scrolled — so those are composed from the same primitive:
+the lozenge for the non-antibody blocks, and the Fab lattice with CL crossed onto the heavy chain for
+the xFab.
+
 ## Construct map — Geneious Prime conventions
 
 From [manual.geneious.com](https://manual.geneious.com/en/latest/) (Sequences, Annotations):
@@ -72,7 +123,7 @@ From [manual.geneious.com](https://manual.geneious.com/en/latest/) (Sequences, A
 - **Directional annotations over a ruler.** Features are drawn as arrows in their strand direction
   with arrow tips, over coordinate ticks at a round interval.
 - **Tracks stacked under the sequence.** Insert annotations sit on the sequence; backbone features
-  form a track below it (inside it, in the circular view).
+  form a track below it, named in the gutter the way Geneious names a track.
 - **Circular by default, linear on demand.** A construct with a backbone opens circular and can be
   shown linearly without being converted, matching "linear view on circular sequences". A construct
   with no backbone is linear only, and the circular option is disabled rather than lying.
@@ -80,6 +131,36 @@ From [manual.geneious.com](https://manual.geneious.com/en/latest/) (Sequences, A
   comparison — names at the left, one shared coordinate scale, each sequence line ending at its own
   length. `Expand` opens the same stack full width.
 - **Clicking an annotation selects its region**, and that selection is shared with the other viewers.
+
+### How it is drawn
+
+The manual describes behaviour, not geometry, so the drawing is measured from the published viewer
+screenshots and kept in `src/model/mapview.ts`. Sizes are pixels at 1:1, as in Geneious, where bar
+heights and fonts stay fixed while the sequence scales.
+
+- **Annotation bar.** 15px tall, with a 2px drop shadow (`#B5B5B5` then `#DDDDDD`) and a 1px gap
+  before the next row, so rows repeat every 18px. The directional end is a triangular point half the
+  bar height, which puts both taper edges at 45°; the flat end is barely rounded, at 0.13× the height.
+- **Fill.** A vertical three-stop gradient per feature: the brightest stop is about 1.21× the base
+  value with the saturation pulled down, the base colour lands at 45% depth, and the bottom sits at
+  about 0.78× the value. The 1px outline is a darker shade of the same hue, never grey.
+- **Labels.** Inside the bar when they fit, in black or white by luminance; otherwise moved outside
+  with a leader line, or dropped entirely rather than clipped, which is Geneious's "hide excessive
+  labels". Names longer than the space available are shortened with an ellipsis.
+- **Ruler.** No baseline — grey numbers with thousands separators and a 3px tick below each, at an
+  interval of 1, 2 or 5 times a power of ten, chosen for the width available. `Expand` lengthens the
+  axis rather than magnifying the drawing, so a wide map shows finer coordinates at the same type size.
+- **Zoomed out.** The sequence collapses to a 2.5px grey line the annotations overlay, on a white
+  canvas, with the name gutter in pale lavender and stacked constructs divided by a hairline.
+- **Selection.** Everything outside the selected feature is dimmed to half alpha over white
+  (`c' = 128 + c/2`), the boundaries get grey carets and bold blue coordinates that displace the round
+  ones they would collide with, and a pale blue callout gives the selected length in bp.
+- **Circular.** A 3px black backbone with the 15px annotation band centred on it, arrowheads bending
+  with the curve to converge at the mid-radius, ruler labels outside running tangentially and flipped
+  on the lower half, feature labels outside on leaders, and the construct name and length in the middle.
+- **Colours.** Geneious stores annotation colour per type as a user preference. Where its screenshots
+  show an unambiguous default we use it — CDS yellow, rep_origin azure, misc_feature grey — and
+  elsewhere this app's part taxonomy stands in, so a domain keeps one colour across bench, pad and map.
 
 ## Data model
 
@@ -150,7 +231,9 @@ to the taxonomy above.
 ```
 src/model/      types, seeded registry, colors, combinatorics, QC, cloning-loop state machine,
                 bioglyph.ts (building blocks, connectivity, symmetry, format identity),
-                geneious.ts (annotation and coordinate model for both map views)
+                dpad.ts (measured pad geometry, domain outlines, target colour slots),
+                geneious.ts (annotation and coordinate model for both map views),
+                mapview.ts (measured map geometry, gradient shading, selection dimming)
 src/state/      reducer, contexts, provider — all session state lives here
 src/components/ registry rail, bench rows and slots, design pad, construct map, flow diagram,
                 QC panel, worklist, variant gallery, activity log

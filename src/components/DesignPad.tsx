@@ -1,6 +1,44 @@
-import { useRef, useState, type DragEvent, type ReactElement } from 'react';
-import { BB_LIBRARY, bbDef, canFuse, chainTarget, symmetry, type BbShape } from '../model/bioglyph';
-import { COLORS, NEUTRAL_DOMAIN, PART_LABELS, lengthIn, targetColor } from '../model/parts';
+import { useRef, useState, type DragEvent } from 'react';
+import { Panel } from './Panel';
+import { BB_LIBRARY, bbDef, canFuse, chainTarget, symmetry } from '../model/bioglyph';
+import {
+  ARM_TILT,
+  BAR_T,
+  CORNER_R,
+  COL_PITCH,
+  DOMAIN_H,
+  DOMAIN_W,
+  FC,
+  GAP,
+  GLYPH_STROKE,
+  HINGE_ORANGE,
+  LOZENGE_R,
+  NEUTRAL,
+  PAD_VIEW,
+  SELECTION,
+  STAPLE_GRAY,
+  STAPLE_W,
+  STEM_GRAY,
+  STEM_W,
+  STROKE_W,
+  TARGET_SLOTS,
+  U,
+  armAnchor,
+  cellBox,
+  colX,
+  domainPath,
+  lattice,
+  latticeBox,
+  rowTop,
+  slotColors,
+  staplePath,
+  targetSlots,
+  type Box,
+  type Cell,
+  type ColorPair,
+  type Lattice,
+} from '../model/dpad';
+import { COLORS, PART_LABELS, lengthIn } from '../model/parts';
 import { suppliedByVector } from '../model/combinatorics';
 import { useApp, useDispatch } from '../state/store';
 import { PART_DRAG_TYPE } from './RegistryRail';
@@ -9,97 +47,40 @@ import type { ArmId, BbKind, ChainDesign, PartType } from '../model/types';
 export const BB_DRAG_TYPE = 'application/x-msab-bb';
 
 /**
- * BioGlyph Design Pad (docs.bioglyph.app):
+ * The BioGlyph Design Pad (docs.bioglyph.app), drawn to the proportions
+ * measured from the published pad: one rounded-rectangle primitive per domain,
+ * notched for variable domains, composed into blocks on a flat dark canvas.
+ * Shape is the building block, colour is the target, and the Fc's two shades
+ * are what homodimer against heterodimer looks like.
  *
- * - Building blocks come from a curated palette and are connected by proximity —
- *   dropping one on an arm position fuses it there, mirroring genetic fusion.
- * - Connectivity is controlled: a tag fuses onto a block, arms occupy positions.
- * - Shape encodes the building block; color encodes the sequence / target.
- * - Symmetry across the Y-axis through the Fc decides homodimer vs. heterodimer.
- * - A format that already exists keeps its identifier rather than gaining a new one.
+ * Every domain stays a drop target and a selection handle, so the faithful
+ * drawing is also the working interface.
  */
 
-const CENTER = 110;
-/** Top of the Fc stem, where both arms converge. */
-const FC_TOP = 108;
+const EMPTY_STROKE = 0.028 * DOMAIN_W;
+const FC_BOTTOM = FC.top + 2 * DOMAIN_H + GAP;
+/** Hinge bars: 7.3u long, 3u and 4u above the CH2 top edge. */
+const BAR_LEN = 7.3 * U;
+const BAR_LOW = FC.top - 3 * U;
+const BAR_HIGH = FC.top - 4 * U;
 
-function dirOf(arm: ArmId) {
-  return arm === 'left' ? -1 : 1;
-}
-
-interface DomainSpec {
-  type: PartType;
-  /** Distance from the arm tip: 0 is the N-terminal domain. */
-  slot: number;
-  /** Which chain carries it, and which lane of the arm it draws in. */
-  side: 'heavy' | 'light';
-}
-
-/** Domains an arm shows at domain zoom, tip first. */
-function domainLayout(bb: BbKind): DomainSpec[] {
-  switch (bb) {
-    case 'fab':
-    case 'scfab':
-      return [
-        { type: 'vh', slot: 0, side: 'heavy' },
-        { type: 'vl', slot: 0, side: 'light' },
-        { type: 'ch1', slot: 1, side: 'heavy' },
-        { type: 'cl', slot: 1, side: 'light' },
-      ];
-    case 'xfab':
-      // Crossover: the heavy chain carries CL, the light chain carries CH1.
-      return [
-        { type: 'vh', slot: 0, side: 'heavy' },
-        { type: 'vl', slot: 0, side: 'light' },
-        { type: 'cl', slot: 1, side: 'heavy' },
-        { type: 'ch1', slot: 1, side: 'light' },
-      ];
-    case 'scfv':
-      return [
-        { type: 'vh', slot: 0, side: 'heavy' },
-        { type: 'vl', slot: 1, side: 'heavy' },
-      ];
-    case 'vhh':
-      return [{ type: 'vh', slot: 0, side: 'heavy' }];
-    case 'mutein':
-    case 'miniprotein':
-    case 'denovo':
-    case 'reagent':
-      return [{ type: 'payload', slot: 0, side: 'heavy' }];
-    default:
-      return [];
-  }
-}
-
-/**
- * Arms run up and outward from the Fc, so slot 0 sits at the outer tip and the
- * light-chain lane is offset perpendicular to the arm axis.
- */
-function domainPos(arm: ArmId, spec: DomainSpec) {
-  const dir = dirOf(arm);
-  const lane = spec.side === 'light' ? 14 : 0;
-  return {
-    cx: CENTER + dir * (54 - spec.slot * 25) + dir * lane,
-    cy: 30 + spec.slot * 22 + lane,
-    rot: dir * 45,
-  };
-}
-
-interface GlyphTarget {
+interface SlotRef {
   chain?: ChainDesign;
   slotIndex: number;
-}
-
-function findSlot(chain: ChainDesign | undefined, type: PartType): number {
-  return chain ? chain.slots.findIndex((s) => s.type === type) : -1;
 }
 
 export function DesignPad() {
   const state = useApp();
   const dispatch = useDispatch();
   const [overArm, setOverArm] = useState<ArmId | null>(null);
+  const [zoom, setZoom] = useState(1);
   const flashTimer = useRef<number | null>(null);
+
   const verdict = symmetry(state.format, state.chains, state.registry);
+  const slots = targetSlots(state.format, state.chains, state.registry);
+  const formatRecord = state.format.formatId
+    ? state.registry.formats[state.format.formatId]
+    : undefined;
 
   function flash(chainId: string) {
     dispatch({ type: 'flash-chain', chainId });
@@ -119,221 +100,49 @@ export function DesignPad() {
     };
   }
 
-  function glyphTarget(arm: ArmId, spec: DomainSpec): GlyphTarget {
+  function armPair(arm: ArmId): ColorPair {
+    const { heavy } = armChains(arm);
+    const target = chainTarget(heavy, state.registry);
+    return slotColors(target ? slots.get(target) : undefined);
+  }
+
+  function slotRef(arm: ArmId, type: PartType, side: 'heavy' | 'light'): SlotRef {
     const { design, heavy, light } = armChains(arm);
-    // Single-chain formats keep every domain on the heavy-side chain.
-    const chain = bbDef(design.bb).needsLightChain && spec.side === 'light' ? light : heavy;
-    return { chain, slotIndex: findSlot(chain, spec.type) };
+    const chain = bbDef(design.bb).needsLightChain && side === 'light' ? light : heavy;
+    return { chain, slotIndex: chain ? chain.slots.findIndex((s) => s.type === type) : -1 };
   }
 
-  function colorFor(type: PartType, chain: ChainDesign | undefined): string {
-    if (state.padColor === 'part') return COLORS[type];
-    const carriesTarget = type === 'vh' || type === 'vl' || type === 'payload';
-    return carriesTarget ? targetColor(chainTarget(chain, state.registry)) : NEUTRAL_DOMAIN;
-  }
-
-  function isSelected(chain: ChainDesign | undefined, slotIndex: number) {
+  function isSelected(ref: SlotRef) {
     return (
-      !!chain && state.activeSlot?.chainId === chain.id && state.activeSlot.slotIndex === slotIndex
+      !!ref.chain &&
+      state.activeSlot?.chainId === ref.chain.id &&
+      state.activeSlot.slotIndex === ref.slotIndex
     );
   }
 
-  function handleDomainDrop(e: DragEvent<SVGElement>, target: GlyphTarget, type: PartType) {
+  function select(ref: SlotRef) {
+    if (!ref.chain || ref.slotIndex < 0) return;
+    dispatch({ type: 'select-component', chainId: ref.chain.id, slotIndex: ref.slotIndex });
+    flash(ref.chain.id);
+  }
+
+  function dropPart(e: DragEvent<SVGElement>, ref: SlotRef, type: PartType) {
     const blockId = e.dataTransfer.getData(PART_DRAG_TYPE);
-    if (!blockId || !target.chain || target.slotIndex < 0) return;
+    if (!blockId || !ref.chain || ref.slotIndex < 0) return;
     e.preventDefault();
+    e.stopPropagation();
     const block = state.registry.blocks[blockId];
     if (!block || block.type !== type) return;
     dispatch({
       type: 'place-block',
-      chainId: target.chain.id,
-      slotIndex: target.slotIndex,
+      chainId: ref.chain.id,
+      slotIndex: ref.slotIndex,
       blockId,
       stack: e.shiftKey,
     });
   }
 
-  function selectDomain(target: GlyphTarget) {
-    if (!target.chain || target.slotIndex < 0) return;
-    dispatch({ type: 'select-component', chainId: target.chain.id, slotIndex: target.slotIndex });
-    flash(target.chain.id);
-  }
-
-  interface DomainShapeProps {
-    target: GlyphTarget;
-    type: PartType;
-    cx: number;
-    cy: number;
-    w: number;
-    h: number;
-    rot: number;
-  }
-
-  /** One domain: a drop target, a selection handle and a live readout in one. */
-  function Domain({ target, type, cx, cy, w, h, rot }: DomainShapeProps) {
-    const chain = target.chain;
-    const slot = chain && target.slotIndex >= 0 ? chain.slots[target.slotIndex] : undefined;
-    if (!slot) return null;
-    const block = slot.blockIds[0] ? state.registry.blocks[slot.blockIds[0]] : undefined;
-    const fromVector = chain ? suppliedByVector(chain, state.registry).includes(type) : false;
-    const filled = !!block || fromVector;
-    const selected = isSelected(chain, target.slotIndex);
-    const color = colorFor(type, chain);
-
-    return (
-      <rect
-        x={cx - w / 2}
-        y={cy - h / 2}
-        width={w}
-        height={h}
-        rx={Math.min(w, h) / 2}
-        fill={filled ? color : 'none'}
-        fillOpacity={block ? 1 : fromVector ? 0.32 : 1}
-        stroke={selected ? 'var(--border-accent)' : filled ? color : 'var(--border-strong)'}
-        strokeWidth={selected ? 2.4 : 1.4}
-        strokeDasharray={filled ? undefined : '3 3'}
-        transform={`rotate(${rot} ${cx} ${cy})`}
-        style={{ cursor: 'pointer' }}
-        onDragOver={(e) => {
-          if (e.dataTransfer.types.includes(PART_DRAG_TYPE)) e.preventDefault();
-        }}
-        onDrop={(e) => handleDomainDrop(e, target, type)}
-        onClick={() => selectDomain(target)}
-      >
-        <title>
-          {`${PART_LABELS[type]} — ${chain?.name ?? 'unassigned'}: ${
-            block?.name ?? (fromVector ? 'supplied by backbone' : 'empty')
-          }${block ? ` · ${lengthIn(block.lengthBp, state.alphabet)}` : ''}${
-            slot.blockIds.length > 1 ? ` (+${slot.blockIds.length - 1} stacked)` : ''
-          }`}
-        </title>
-      </rect>
-    );
-  }
-
-  /** Shape-only silhouette of a building block, drawn at format zoom. */
-  function BbGlyph({ arm }: { arm: ArmId }) {
-    const dir = dirOf(arm);
-    const x = CENTER + dir * 44;
-    const y = 74;
-    const { design, heavy } = armChains(arm);
-    const def = bbDef(design.bb);
-    const empty = design.bb === 'empty';
-    const color = state.padColor === 'part' ? COLORS.vh : targetColor(chainTarget(heavy, state.registry));
-    const focused = state.focusChainId === design.heavyChainId;
-    const fill = {
-      fill: empty ? 'none' : color,
-      stroke: empty ? 'var(--border-strong)' : focused ? 'var(--border-accent)' : color,
-      strokeWidth: focused ? 2.4 : 1.4,
-      strokeDasharray: empty ? '4 3' : undefined,
-    };
-
-    const shapes: Record<BbShape, ReactElement> = {
-      fab: (
-        <g {...fill}>
-          <rect x={x - 21} y={y - 44} width={18} height={26} rx={9} />
-          <rect x={x + 3} y={y - 44} width={18} height={26} rx={9} />
-          <rect x={x - 21} y={y - 18} width={18} height={22} rx={9} fillOpacity={0.45} />
-          <rect x={x + 3} y={y - 18} width={18} height={22} rx={9} fillOpacity={0.45} />
-        </g>
-      ),
-      crossfab: (
-        <g {...fill}>
-          <rect x={x - 21} y={y - 44} width={18} height={26} rx={9} />
-          <rect x={x + 3} y={y - 44} width={18} height={26} rx={9} />
-          <rect x={x - 21} y={y - 18} width={18} height={22} rx={9} fillOpacity={0.45} />
-          <rect x={x + 3} y={y - 18} width={18} height={22} rx={9} fillOpacity={0.45} />
-          <line x1={x - 14} y1={y - 16} x2={x + 14} y2={y + 2} stroke="var(--surface-2)" strokeWidth={2.5} />
-        </g>
-      ),
-      scfv: (
-        <g {...fill}>
-          <rect x={x - 10} y={y - 46} width={20} height={20} rx={9} />
-          <rect x={x - 10} y={y - 22} width={20} height={20} rx={9} fillOpacity={0.55} />
-          <line x1={x} y1={y - 26} x2={x} y2={y - 22} stroke="var(--border-strong)" strokeWidth={1.2} />
-        </g>
-      ),
-      single: (
-        <g {...fill}>
-          <rect x={x - 11} y={y - 40} width={22} height={24} rx={11} />
-        </g>
-      ),
-      ball: (
-        <g {...fill}>
-          <circle cx={x} cy={y - 28} r={14} />
-        </g>
-      ),
-      wedge: (
-        <g {...fill}>
-          <path d={`M ${x} ${y - 44} L ${x + 14} ${y - 14} L ${x - 14} ${y - 14} Z`} />
-        </g>
-      ),
-      flag: (
-        <g {...fill}>
-          <path d={`M ${x - 10} ${y - 40} h 20 v 16 l -10 8 l -10 -8 Z`} />
-        </g>
-      ),
-      stem: <g {...fill} />,
-      none: (
-        <g {...fill}>
-          <rect x={x - 16} y={y - 40} width={32} height={26} rx={9} />
-        </g>
-      ),
-    };
-
-    return (
-      <g
-        onDragOver={(e) => {
-          if (e.dataTransfer.types.includes(BB_DRAG_TYPE)) {
-            e.preventDefault();
-            setOverArm(arm);
-          }
-        }}
-        onDragLeave={() => setOverArm(null)}
-        onDrop={(e) => handleArmDrop(e, arm)}
-        onClick={() =>
-          design.heavyChainId && dispatch({ type: 'focus-chain', chainId: design.heavyChainId })
-        }
-        style={{ cursor: 'pointer' }}
-      >
-        {overArm === arm && (
-          <rect
-            x={x - 27}
-            y={y - 50}
-            width={54}
-            height={62}
-            rx={10}
-            fill="var(--bg-accent)"
-            stroke="var(--border-accent)"
-            strokeDasharray="4 3"
-          />
-        )}
-        {/* Fusion by proximity: the connection down into the Fc scaffold. */}
-        <line x1={x} y1={y + 4} x2={CENTER + dir * 12} y2={FC_TOP} stroke="var(--border-strong)" strokeWidth={1.3} />
-        {shapes[def.shape]}
-        <text x={x} y={y + 16} textAnchor="middle" fontSize="8.5" fill="var(--text-secondary)">
-          {def.label}
-        </text>
-        {design.fused.map((kind, i) => (
-          <g key={kind}>
-            <rect
-              x={x - 9}
-              y={y + 22 + i * 12}
-              width={18}
-              height={9}
-              rx={2}
-              fill={COLORS.tag}
-              fillOpacity={0.85}
-            />
-            <title>{`${bbDef(kind).label} fused to this arm`}</title>
-          </g>
-        ))}
-        <title>{`${def.label} — ${def.description}`}</title>
-      </g>
-    );
-  }
-
-  function handleArmDrop(e: DragEvent<SVGElement>, arm: ArmId) {
+  function dropBlock(e: DragEvent<SVGElement>, arm: ArmId) {
     setOverArm(null);
     const kind = e.dataTransfer.getData(BB_DRAG_TYPE) as BbKind;
     if (!kind) return;
@@ -345,157 +154,378 @@ export function DesignPad() {
     dispatch({ type: 'set-arm-bb', arm, bb: kind });
   }
 
-  const formatRecord = state.format.formatId
-    ? state.registry.formats[state.format.formatId]
-    : undefined;
+  /** One domain: outline, fill state, drop target and selection handle. */
+  function Domain({
+    box,
+    cell,
+    arm,
+    pair,
+  }: {
+    box: Box;
+    cell: Cell;
+    arm: ArmId;
+    pair: ColorPair;
+  }) {
+    const ref = slotRef(arm, cell.type, cell.side);
+    const slot = ref.chain && ref.slotIndex >= 0 ? ref.chain.slots[ref.slotIndex] : undefined;
+    const block = slot?.blockIds[0] ? state.registry.blocks[slot.blockIds[0]] : undefined;
+    const fromVector = ref.chain
+      ? suppliedByVector(ref.chain, state.registry).includes(cell.type)
+      : false;
+    const color =
+      state.padColor === 'part' ? COLORS[cell.type] : cell.col === 0 ? pair.base : pair.tint;
+    const filled = !!block || fromVector;
+    const selected = isSelected(ref);
+    const d = domainPath(box, cell.lozenge ? LOZENGE_R : CORNER_R, cell.notch);
+
+    const tip = `${PART_LABELS[cell.type]} — ${ref.chain?.name ?? 'no chain'}: ${
+      block?.name ?? (fromVector ? 'supplied by the backbone' : 'empty')
+    }${block ? ` · ${lengthIn(block.lengthBp, state.alphabet)}` : ''}${
+      slot && slot.blockIds.length > 1 ? ` (+${slot.blockIds.length - 1} stacked)` : ''
+    }`;
+
+    return (
+      <g
+        data-tip={tip}
+        style={{ cursor: 'pointer' }}
+        onDragOver={(e) => {
+          if (e.dataTransfer.types.includes(PART_DRAG_TYPE)) {
+            e.preventDefault();
+            e.stopPropagation();
+          }
+        }}
+        onDrop={(e) => dropPart(e, ref, cell.type)}
+        onClick={(e) => {
+          e.stopPropagation();
+          select(ref);
+        }}
+      >
+        {selected && (
+          <path d={d} fill="none" stroke={SELECTION} strokeWidth={STROKE_W * 4} opacity={0.9} />
+        )}
+        <path
+          d={d}
+          fill={filled ? color : 'none'}
+          fillOpacity={block ? 1 : fromVector ? 0.45 : 1}
+          stroke={filled ? GLYPH_STROKE : color}
+          strokeWidth={filled ? STROKE_W : EMPTY_STROKE}
+        />
+      </g>
+    );
+  }
+
+  /** A building block: its domain lattice, stems, disulfide or linker staple. */
+  function Block({ arm, l, pair }: { arm: ArmId; l: Lattice; pair: ColorPair }) {
+    return (
+      <>
+        {/* Stems bridge the gap between rows, on each column centre. */}
+        {l.rows > 1 &&
+          Array.from({ length: l.cols }, (_, col) => (
+            <line
+              key={`stem-${col}`}
+              x1={colX(col)}
+              y1={rowTop(0, l.rows) + DOMAIN_H}
+              x2={colX(col)}
+              y2={rowTop(1, l.rows)}
+              stroke={STEM_GRAY}
+              strokeWidth={STEM_W}
+            />
+          ))}
+
+        {l.cells.map((cell) => (
+          <Domain
+            key={`${cell.type}-${cell.col}-${cell.row}`}
+            box={cellBox(cell, l.rows)}
+            cell={cell}
+            arm={arm}
+            pair={pair}
+          />
+        ))}
+
+        {/* The interchain disulfide, one unit above the bottom edge. */}
+        {l.disulfide && (
+          <rect
+            x={DOMAIN_W / 2}
+            y={-U - BAR_T / 2}
+            width={COL_PITCH - DOMAIN_W}
+            height={BAR_T}
+            fill={HINGE_ORANGE}
+          />
+        )}
+
+        {l.staple && (
+          <path
+            d={staplePath(l.rows)}
+            fill="none"
+            stroke={STAPLE_GRAY}
+            strokeWidth={STAPLE_W}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        )}
+      </>
+    );
+  }
+
+  function Arm({ arm }: { arm: ArmId }) {
+    const { design } = armChains(arm);
+    const anchor = armAnchor(arm);
+    const l = lattice(design.bb);
+    const pair = armPair(arm);
+    const empty = design.bb === 'empty';
+    const box = latticeBox(empty ? lattice('fab') : l);
+
+    return (
+      <g>
+        {/* The stem leaves the block along the arm axis, then turns vertical. */}
+        {!empty && (
+          <path
+            d={`M ${anchor.origin.x} ${anchor.origin.y} L ${anchor.elbow.x} ${anchor.elbow.y} L ${anchor.stem.x} ${anchor.stem.y}`}
+            fill="none"
+            stroke={STEM_GRAY}
+            strokeWidth={STEM_W}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
+        )}
+
+        <g
+          transform={`translate(${anchor.origin.x} ${anchor.origin.y}) rotate(${anchor.tilt})${
+            anchor.mirror ? ' scale(-1,1)' : ''
+          }`}
+          data-tip={
+            empty
+              ? `Empty ${arm} arm — drag a building block from the palette onto it`
+              : `${bbDef(design.bb).label} on the ${arm} arm — ${bbDef(design.bb).description}`
+          }
+          style={{ cursor: 'pointer' }}
+          onDragOver={(e) => {
+            if (e.dataTransfer.types.includes(BB_DRAG_TYPE)) {
+              e.preventDefault();
+              setOverArm(arm);
+            }
+          }}
+          onDragLeave={() => setOverArm(null)}
+          onDrop={(e) => dropBlock(e, arm)}
+          onClick={() =>
+            design.heavyChainId && dispatch({ type: 'focus-chain', chainId: design.heavyChainId })
+          }
+        >
+          {(overArm === arm || empty) && (
+            <rect
+              x={box.x - GAP / 2}
+              y={box.y - GAP / 2}
+              width={box.w + GAP}
+              height={box.h + GAP}
+              rx={CORNER_R * 2}
+              fill={overArm === arm ? 'rgba(124, 221, 206, 0.12)' : 'none'}
+              stroke={overArm === arm ? SELECTION : '#4B4B4B'}
+              strokeWidth={STROKE_W * 1.5}
+              strokeDasharray={overArm === arm ? undefined : `${GAP / 2} ${GAP / 2}`}
+            />
+          )}
+
+          {!empty && <Block arm={arm} l={l} pair={pair} />}
+
+          {/* Fused blocks stack N-terminally in the tint column channel. */}
+          {design.fused.map((kind, i) => {
+            const fw = DOMAIN_W * 0.6;
+            const fh = DOMAIN_H * 0.55;
+            const bottom = rowTop(0, Math.max(l.rows, 1)) - GAP - i * (fh + GAP);
+            const fused: Box = { x: colX(1) - fw / 2, y: bottom - fh, w: fw, h: fh };
+            return (
+              <g key={kind} data-tip={`${bbDef(kind).label} fused onto this arm`}>
+                <line
+                  x1={colX(1)}
+                  y1={bottom}
+                  x2={colX(1)}
+                  y2={bottom + GAP}
+                  stroke={STEM_GRAY}
+                  strokeWidth={STEM_W}
+                />
+                <path
+                  d={domainPath(fused, LOZENGE_R * 0.6, false)}
+                  fill={COLORS.tag}
+                  stroke={GLYPH_STROKE}
+                  strokeWidth={STROKE_W}
+                />
+              </g>
+            );
+          })}
+        </g>
+      </g>
+    );
+  }
+
+  /** The Fc: two grey columns, plus the double orange hinge above them. */
+  function Fc() {
+    const l = lattice('fc');
+    const homodimer = verdict.fc !== 'heterodimer';
+    const hingeSet = (['left', 'right'] as ArmId[]).every((arm) => {
+      const ref = slotRef(arm, 'hinge', 'heavy');
+      const slot = ref.chain && ref.slotIndex >= 0 ? ref.chain.slots[ref.slotIndex] : undefined;
+      return !!slot?.blockIds.length;
+    });
+
+    return (
+      <g>
+        <g transform={`translate(${FC.cx - COL_PITCH / 2} ${FC_BOTTOM})`}>
+          {Array.from({ length: 2 }, (_, col) => (
+            <line
+              key={col}
+              x1={colX(col)}
+              y1={rowTop(0, 2) + DOMAIN_H}
+              x2={colX(col)}
+              y2={rowTop(1, 2)}
+              stroke={STEM_GRAY}
+              strokeWidth={STEM_W}
+            />
+          ))}
+          {l.cells.map((cell) => (
+            <Domain
+              key={`${cell.type}-${cell.col}`}
+              box={cellBox(cell, l.rows)}
+              cell={{ ...cell, col: homodimer ? 0 : cell.col }}
+              arm={cell.col === 0 ? 'left' : 'right'}
+              pair={NEUTRAL}
+            />
+          ))}
+        </g>
+
+        {/* Each stem carries one heavy chain's hinge. */}
+        {(['left', 'right'] as ArmId[]).map((arm) => {
+          const ref = slotRef(arm, 'hinge', 'heavy');
+          const slot = ref.chain && ref.slotIndex >= 0 ? ref.chain.slots[ref.slotIndex] : undefined;
+          const block = slot?.blockIds[0] ? state.registry.blocks[slot.blockIds[0]] : undefined;
+          const x = FC.cx + (arm === 'left' ? -1 : 1) * (COL_PITCH / 2);
+          return (
+            <g
+              key={arm}
+              data-tip={`Hinge on the ${arm} heavy chain: ${block?.name ?? 'empty'}`}
+              style={{ cursor: 'pointer' }}
+              onDragOver={(e) => {
+                if (e.dataTransfer.types.includes(PART_DRAG_TYPE)) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }
+              }}
+              onDrop={(e) => dropPart(e, ref, 'hinge')}
+              onClick={(e) => {
+                e.stopPropagation();
+                select(ref);
+              }}
+            >
+              <line
+                x1={x}
+                y1={FC.top}
+                x2={x}
+                y2={BAR_HIGH - U}
+                stroke={isSelected(ref) ? SELECTION : STEM_GRAY}
+                strokeWidth={isSelected(ref) ? STEM_W * 1.8 : STEM_W}
+              />
+              <rect x={x - U} y={BAR_HIGH - U} width={2 * U} height={4 * U} fill="transparent" />
+            </g>
+          );
+        })}
+
+        {[BAR_HIGH, BAR_LOW].map((y) => (
+          <rect
+            key={y}
+            x={FC.cx - BAR_LEN / 2}
+            y={y - BAR_T / 2}
+            width={BAR_LEN}
+            height={BAR_T}
+            fill={HINGE_ORANGE}
+            opacity={hingeSet ? 1 : 0.4}
+          />
+        ))}
+      </g>
+    );
+  }
+
+  const view = {
+    w: PAD_VIEW.w / zoom,
+    h: PAD_VIEW.h / zoom,
+  };
+  const viewBox = `${(PAD_VIEW.w - view.w) / 2} ${(PAD_VIEW.h - view.h) / 2} ${view.w} ${view.h}`;
+
+  const chips = [...slots.entries()].sort((a, b) => a[1] - b[1]);
 
   return (
-    <div className="panel">
-      <p className="panel-title">
-        Design pad
-        <span className="count">{formatRecord ? formatRecord.id : 'unregistered format'}</span>
-      </p>
-
-      <div className="pad-controls">
-        <div className="seg">
-          {(['format', 'domain'] as const).map((z) => (
-            <button
-              key={z}
-              className={state.padZoom === z ? 'active' : ''}
-              title={
-                z === 'format'
-                  ? 'Building blocks as shapes — the format level'
-                  : 'Individual domains, each a drop target'
-              }
-              onClick={() => dispatch({ type: 'set-pad-zoom', zoom: z })}
-            >
-              {z === 'format' ? 'Format' : 'Domain'}
-            </button>
-          ))}
-        </div>
-        <div className="seg">
-          {(['target', 'part'] as const).map((c) => (
-            <button
-              key={c}
-              className={state.padColor === c ? 'active' : ''}
-              title={
-                c === 'target'
-                  ? 'Color by sequence / target, the BioGlyph convention'
-                  : 'Color by part category, per the color taxonomy'
-              }
-              onClick={() => dispatch({ type: 'set-pad-color', mode: c })}
-            >
-              {c === 'target' ? 'By target' : 'By part'}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="bb-palette">
-        {BB_LIBRARY.filter((b) => b.kind !== 'empty' && b.kind !== 'fc').map((def) => (
+    <Panel
+      title="Design pad"
+      tip="The molecule itself, drawn to BioGlyph's conventions: shape is the building block, colour is the target, and the Fc's two shades are homodimer against heterodimer"
+      trailing={formatRecord ? formatRecord.id : 'unregistered format'}
+    >
+      <div className="bb-rail">
+        {BB_LIBRARY.filter((def) => def.kind !== 'empty' && def.kind !== 'fc').map((def) => (
           <button
             key={def.kind}
-            className="bb-chip"
+            className="bb-card"
             draggable
-            title={`${def.description}${def.fusesOnly ? ' — fuses onto an existing block' : ''}`}
+            data-tip={`${def.description}${
+              def.fusesOnly
+                ? ' — drag it onto a block already on the pad to fuse it there'
+                : ' — drag it onto either arm to place it'
+            }`}
             onDragStart={(e) => {
               e.dataTransfer.setData(BB_DRAG_TYPE, def.kind);
               e.dataTransfer.effectAllowed = 'copy';
             }}
           >
-            {def.label}
+            <PaletteGlyph bb={def.kind} />
+            <span>{def.label}</span>
           </button>
         ))}
       </div>
 
-      <svg className="pad" viewBox="0 0 220 210" role="img" aria-label="Molecule design pad">
-        {/* The Y-axis through the Fc: the line symmetry is judged against. */}
-        <line
-          x1={CENTER}
-          y1={6}
-          x2={CENTER}
-          y2={204}
-          stroke="var(--border)"
-          strokeWidth={1}
-          strokeDasharray="2 4"
-        />
+      <div className="dpad">
+        <svg
+          className="dpad-canvas"
+          viewBox={viewBox}
+          role="img"
+          aria-label="BioGlyph design pad"
+        >
+          <Fc />
+          <Arm arm="left" />
+          <Arm arm="right" />
+        </svg>
 
-        {state.padZoom === 'format' ? (
-          <>
-            <BbGlyph arm="left" />
-            <BbGlyph arm="right" />
-          </>
-        ) : (
-          (['left', 'right'] as ArmId[]).map((arm) => {
-            const dir = dirOf(arm);
-            const layout = domainLayout(state.format.arms[arm].bb);
-            const inner = layout.reduce((max, s) => Math.max(max, s.slot), 0);
-            const innerPos = domainPos(arm, { type: 'vh', slot: inner, side: 'heavy' });
-            return (
-              <g key={arm}>
-                {/* The arm axis, from its innermost domain down to the Fc. */}
-                {layout.length > 0 && (
-                  <line
-                    x1={innerPos.cx}
-                    y1={innerPos.cy}
-                    x2={CENTER + dir * 12}
-                    y2={FC_TOP}
-                    stroke="var(--border-strong)"
-                    strokeWidth={1.2}
-                  />
-                )}
-                {layout.map((spec) => {
-                  const pos = domainPos(arm, spec);
-                  return (
-                    <Domain
-                      key={`${spec.type}-${spec.slot}-${spec.side}`}
-                      target={glyphTarget(arm, spec)}
-                      type={spec.type}
-                      cx={pos.cx}
-                      cy={pos.cy}
-                      w={25}
-                      h={11}
-                      rot={pos.rot}
-                    />
-                  );
-                })}
-                <Domain
-                  target={{ chain: armChains(arm).heavy, slotIndex: findSlot(armChains(arm).heavy, 'hinge') }}
-                  type="hinge"
-                  cx={CENTER + dir * 13}
-                  cy={98}
-                  w={22}
-                  h={10}
-                  rot={dir * 58}
-                />
-              </g>
-            );
-          })
+        {chips.length > 0 && (
+          <div className="dpad-chips">
+            {chips.map(([target, slot]) => (
+              <span
+                key={target}
+                className="dpad-chip"
+                style={{ background: slotColors(slot).base }}
+                data-tip={`Target ${String.fromCharCode(65 + slot)}: every domain binding ${target} carries this colour`}
+              >
+                {target}
+              </span>
+            ))}
+          </div>
         )}
 
-        {/* The Fc is a dimer: CH2 and CH3 each render once per heavy chain. */}
-        {(['ch2', 'ch3'] as const).map((type, row) =>
-          (['left', 'right'] as ArmId[]).map((arm) => {
-            const heavy = armChains(arm).heavy;
-            return (
-              <Domain
-                key={`${type}-${arm}`}
-                target={{ chain: heavy, slotIndex: findSlot(heavy, type) }}
-                type={type}
-                cx={CENTER + dirOf(arm) * 12}
-                cy={132 + row * 38}
-                w={18}
-                h={32}
-                rot={0}
-              />
-            );
-          }),
-        )}
-
-        <text x={CENTER} y={204} textAnchor="middle" fontSize="8.5" fill="var(--text-muted)">
-          {verdict.fc === 'none' ? 'Fc' : `${verdict.fc} Fc`}
-        </text>
-      </svg>
+        <div className="dpad-tools">
+          <button
+            className="dpad-tool"
+            data-tip="Zoom in"
+            onClick={() => setZoom((z) => Math.min(z * 1.25, 3))}
+          >
+            +
+          </button>
+          <button
+            className="dpad-tool"
+            data-tip="Zoom out"
+            onClick={() => setZoom((z) => Math.max(z / 1.25, 0.6))}
+          >
+            −
+          </button>
+          <button className="dpad-tool" data-tip="Fit the molecule to the pad" onClick={() => setZoom(1)}>
+            ⤢
+          </button>
+        </div>
+      </div>
 
       <div className={`status-banner ${verdict.symmetric ? 'pass' : 'warn'}`}>{verdict.detail}</div>
 
@@ -505,15 +535,35 @@ export function DesignPad() {
       </div>
 
       <div className="toolbar" style={{ marginTop: 8, marginBottom: 0 }}>
-        <button className="btn primary" onClick={() => dispatch({ type: 'register-format' })}>
+        <button
+          className="btn primary"
+          data-tip="Give this shape a format identity (FMT-id). An identical format keeps its original identifier rather than minting a duplicate."
+          onClick={() => dispatch({ type: 'register-format' })}
+        >
           {formatRecord ? 'Re-check format identity' : 'Register format'}
         </button>
+        <div className="seg">
+          {(['target', 'part'] as const).map((c) => (
+            <button
+              key={c}
+              className={state.padColor === c ? 'active' : ''}
+              data-tip={
+                c === 'target'
+                  ? 'Colour by target, the BioGlyph convention: the first target in a design is blue, the second green, and each block draws its two chains as a shade and a lighter tint'
+                  : 'Colour by part category instead, matching the bench and the construct map'
+              }
+              onClick={() => dispatch({ type: 'set-pad-color', mode: c })}
+            >
+              {c === 'target' ? 'By target' : 'By part'}
+            </button>
+          ))}
+        </div>
         {(['left', 'right'] as ArmId[]).map((arm) => (
           <button
             key={arm}
             className="btn"
             disabled={!state.format.arms[arm].fused.length}
-            title="Remove blocks fused onto this arm"
+            data-tip={`Remove everything fused onto the ${arm} arm, keeping the arm's own building block`}
             onClick={() => dispatch({ type: 'set-arm-bb', arm, bb: state.format.arms[arm].bb })}
           >
             Clear {arm} fusions
@@ -522,11 +572,68 @@ export function DesignPad() {
       </div>
 
       <p className="pair-note">
-        Drag a building block onto an arm to fuse it there; drag a sequence component from the
-        registry straight onto a domain. Shape is the building block, color is the sequence it
-        carries. Symmetry across the Fc decides homodimer against heterodimer, and registering a
-        format that already exists reuses its identifier rather than minting a new one.
+        Domains are the same rounded box throughout, notched where the domain is variable. Drag a
+        building block onto an arm to place it, or a sequence component from the registry straight
+        onto a domain. Arms splay {ARM_TILT}° off vertical with the N-terminus at the top, and an
+        outlined domain is one still waiting for a sequence.
       </p>
-    </div>
+    </Panel>
+  );
+}
+
+/** Palette icons are drawn flat in the first target's blue, without outlines. */
+function PaletteGlyph({ bb }: { bb: BbKind }) {
+  const l = lattice(bb);
+  const box = latticeBox(l);
+  const pad = GAP;
+  const pair = TARGET_SLOTS[0];
+
+  return (
+    <svg
+      viewBox={`${box.x - pad} ${box.y - pad} ${box.w + pad * 2} ${box.h + pad * 2}`}
+      width={40}
+      height={30}
+      preserveAspectRatio="xMidYMid meet"
+      aria-hidden="true"
+    >
+      {l.rows > 1 &&
+        Array.from({ length: l.cols }, (_, col) => (
+          <line
+            key={col}
+            x1={colX(col)}
+            y1={rowTop(0, l.rows) + DOMAIN_H}
+            x2={colX(col)}
+            y2={rowTop(1, l.rows)}
+            stroke={STEM_GRAY}
+            strokeWidth={STEM_W}
+          />
+        ))}
+      {l.cells.map((cell) => (
+        <path
+          key={`${cell.type}-${cell.col}-${cell.row}`}
+          d={domainPath(cellBox(cell, l.rows), cell.lozenge ? LOZENGE_R : CORNER_R, cell.notch)}
+          fill={cell.col === 0 ? pair.base : pair.tint}
+        />
+      ))}
+      {l.disulfide && (
+        <rect
+          x={DOMAIN_W / 2}
+          y={-U - BAR_T / 2}
+          width={COL_PITCH - DOMAIN_W}
+          height={BAR_T}
+          fill={HINGE_ORANGE}
+        />
+      )}
+      {l.staple && (
+        <path
+          d={staplePath(l.rows)}
+          fill="none"
+          stroke={STAPLE_GRAY}
+          strokeWidth={STAPLE_W}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      )}
+    </svg>
   );
 }

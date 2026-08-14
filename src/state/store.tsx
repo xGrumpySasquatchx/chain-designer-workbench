@@ -56,7 +56,6 @@ export interface AppState {
   constructView: 'circular' | 'linear';
   /** Pad glyphs colored by target (BioGlyph) or by part category (spec 8a). */
   padColor: 'target' | 'part';
-  padZoom: 'format' | 'domain';
   /** Chain whose variant gallery is open, if any. */
   galleryChainId: string | null;
   /** True while the construct map is expanded into a full-width sheet. */
@@ -95,7 +94,6 @@ export type Action =
   | { type: 'set-alphabet'; alphabet: Alphabet }
   | { type: 'set-construct-view'; view: 'circular' | 'linear' }
   | { type: 'set-pad-color'; mode: 'target' | 'part' }
-  | { type: 'set-pad-zoom'; zoom: 'format' | 'domain' }
   | { type: 'set-arm-bb'; arm: ArmId; bb: BbKind }
   | { type: 'fuse-bb'; arm: ArmId; bb: BbKind }
   | { type: 'register-format' }
@@ -119,7 +117,6 @@ export function createInitialState(): AppState {
     format: initialFormat(),
     constructView: 'circular',
     padColor: 'target',
-    padZoom: 'domain',
     galleryChainId: null,
     mapExpanded: false,
     log: [],
@@ -594,9 +591,6 @@ export function reducer(state: AppState, action: Action): AppState {
 
     case 'set-pad-color':
       return { ...state, padColor: action.mode };
-
-    case 'set-pad-zoom':
-      return { ...state, padZoom: action.zoom };
 
     case 'set-arm-bb': {
       const arm = state.format.arms[action.arm];

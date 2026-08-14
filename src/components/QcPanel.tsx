@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Panel } from './Panel';
 import { flowState } from '../model/flow';
 import { variantCount } from '../model/combinatorics';
 import { runFormatQc } from '../model/qc';
@@ -23,15 +24,23 @@ export function QcPanel() {
   const registered = chain.regIds.map((id) => state.registry.registered[id]).filter(Boolean);
 
   return (
-    <div className="panel">
-      <p className="panel-title">
-        QC &amp; registration
-        <span className="count">{chain.constructIds.length ? 'construct assembled' : 'not assembled'}</span>
-      </p>
-
+    <Panel
+      title="QC & registration"
+      tip="Checks that must pass before a chain can be registered, and the inventory record it mints"
+      trailing={chain.constructIds.length ? 'construct assembled' : 'not assembled'}
+    >
       <div className="seg full">
         {(['chain', 'format'] as const).map((s) => (
-          <button key={s} className={scope === s ? 'active' : ''} onClick={() => setScope(s)}>
+          <button
+            key={s}
+            className={scope === s ? 'active' : ''}
+            data-tip={
+              s === 'chain'
+                ? `Check ${chain.name} alone: components, compatibility, reading frame and plasmid size`
+                : 'Check the whole molecule: arm symmetry, Fc pairing and light-chain mispairing across both arms'
+            }
+            onClick={() => setScope(s)}
+          >
             {s === 'chain' ? 'This chain' : 'Whole format'}
           </button>
         ))}
@@ -61,6 +70,15 @@ export function QcPanel() {
         <button
           className="btn primary"
           disabled={!chain.vectorId || chain.constructIds.length > 0}
+          data-tip={
+            !chain.vectorId
+              ? 'Assign a backbone from the Vectors tab first — assembly needs an insert and a vector'
+              : chain.constructIds.length > 0
+                ? 'Already assembled; use Edit selections to change it'
+                : variants > 1
+                  ? `Combine the insert with the backbone for all ${variants} stacked combinations, minting a CC-id each`
+                  : 'Combine this insert with the backbone and mint a CC-id'
+          }
           onClick={() => dispatch({ type: 'assemble', chainId: chain.id })}
         >
           {variants > 1 ? `Assemble ${variants} constructs` : 'Assemble insert + vector'}
@@ -68,6 +86,15 @@ export function QcPanel() {
         <button
           className="btn"
           disabled={!chain.constructIds.length || flow.qc.status === 'fail' || chain.regIds.length > 0}
+          data-tip={
+            chain.regIds.length > 0
+              ? `Already registered as ${chain.regIds.join(', ')}`
+              : !chain.constructIds.length
+                ? 'Assemble the construct before registering it'
+                : flow.qc.status === 'fail'
+                  ? 'QC has to pass before this chain can enter inventory'
+                  : 'Check this chain into inventory, minting a REG-id'
+          }
           onClick={() => dispatch({ type: 'register', chainId: chain.id })}
         >
           Register chain
@@ -75,7 +102,7 @@ export function QcPanel() {
         <button
           className="btn"
           disabled={!chain.constructIds.length}
-          title="Editing selections mints a new CC-id on the next assembly"
+          data-tip="Reopen the component choices — the next assembly mints a new CC-id rather than overwriting this one"
           onClick={() => dispatch({ type: 'edit-construct', chainId: chain.id })}
         >
           Edit selections
@@ -110,6 +137,6 @@ export function QcPanel() {
           ))}
         </div>
       )}
-    </div>
+    </Panel>
   );
 }

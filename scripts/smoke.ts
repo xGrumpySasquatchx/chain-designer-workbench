@@ -6,8 +6,36 @@
  */
 import { bbDef, symmetry } from '../src/model/bioglyph';
 import { componentsComplete, variantCount } from '../src/model/combinatorics';
+import {
+  COL_PITCH,
+  CORNER_R,
+  DOMAIN_H,
+  DOMAIN_W,
+  FC,
+  GAP,
+  ROW_PITCH,
+  armAnchor,
+  cellBox,
+  domainPath,
+  lattice,
+  slotColors,
+  targetSlots,
+} from '../src/model/dpad';
 import { flowState } from '../src/model/flow';
 import { buildMap } from '../src/model/geneious';
+import {
+  BAR_H,
+  HEAD,
+  ROW_PITCH as MAP_ROW_PITCH,
+  arrowPath,
+  bandArcPath,
+  coordinate,
+  dim,
+  shading,
+  tangential,
+  textOn,
+  truncate,
+} from '../src/model/mapview';
 import { inAlphabet, lengthIn } from '../src/model/parts';
 import { runFormatQc, runQc } from '../src/model/qc';
 import { createInitialState, reducer, type Action, type AppState } from '../src/state/store';
@@ -343,6 +371,100 @@ linked = run(linked, { type: 'select', id: HEAVY_B, mode: 'toggle' });
 check(
   'row multi-selection survives a component selection',
   linked.selection.includes(HEAVY_B),
+);
+
+console.log('\n— design pad geometry —');
+const fab = lattice('fab');
+check('a Fab is four domains on a two-by-two lattice', fab.cells.length === 4 && fab.cols === 2 && fab.rows === 2);
+check(
+  'only variable domains carry the notch',
+  fab.cells.every((c) => c.notch === (c.type === 'vh' || c.type === 'vl')),
+);
+check(
+  'the two-chain Fab is held by a disulfide, the single-chain one by a linker',
+  fab.disulfide && !fab.staple && lattice('scfab').staple && !lattice('scfab').disulfide,
+);
+check(
+  'the crossover Fab puts CL on the heavy chain',
+  lattice('xfab').cells.some((c) => c.type === 'cl' && c.side === 'heavy'),
+);
+check('non-Ig blocks are a single lozenge', lattice('mutein').cells.every((c) => c.lozenge));
+check(
+  'the domain box keeps BioGlyph proportions',
+  Math.abs(DOMAIN_W / DOMAIN_H - 6 / 11) < 1e-9 && Math.abs(CORNER_R / DOMAIN_W - 0.083) < 0.001,
+);
+check(
+  'columns and rows are one box plus a two-unit gap',
+  COL_PITCH === DOMAIN_W + GAP && ROW_PITCH === DOMAIN_H + GAP,
+);
+const notched = domainPath(cellBox(fab.cells[0], 2), CORNER_R, true);
+const plain = domainPath(cellBox(fab.cells[2], 2), CORNER_R, false);
+check(
+  'the notch adds arcs to the outline rather than replacing it',
+  notched.split('A').length === plain.split('A').length + 4,
+);
+check(
+  'arms mirror each other around the Fc',
+  armAnchor('left').tilt === -armAnchor('right').tilt && armAnchor('left').mirror,
+);
+check(
+  'each arm stem lands on its own Fc column',
+  armAnchor('left').stem.x < FC.cx && armAnchor('right').stem.x > FC.cx,
+);
+const padSlots = targetSlots(linked.format, linked.chains, linked.registry);
+check(
+  'the first target on the pad takes the first colour slot',
+  padSlots.get('HER2') === 0 && slotColors(0).base === '#448DBF',
+);
+check(
+  'a block draws its two chains as a shade and a lighter tint',
+  slotColors(0).base !== slotColors(0).tint && slotColors(undefined).base === '#8F8F8F',
+);
+
+console.log('\n— construct map rendering —');
+check(
+  'the arrowhead is half the bar height, so both edges are at 45 degrees',
+  HEAD * 2 === BAR_H,
+);
+check('a bar row is the bar plus its shadow plus a gap', MAP_ROW_PITCH === BAR_H + 2 + 1);
+const plus = arrowPath(0, 0, 60, 1);
+const minus = arrowPath(0, 0, 60, -1);
+check(
+  'an annotation has one point and a rounded flat end',
+  plus.split('A').length === 3 && minus.split('A').length === 3,
+);
+check(
+  'the point follows the strand',
+  plus.includes(`L 60 ${BAR_H / 2}`) && minus.includes(`L 0 ${BAR_H / 2}`),
+);
+const green = shading('#00B200');
+check(
+  'fills are shaded from a brighter stop down to a darker one',
+  green.top > green.mid && green.bottom < green.mid && green.outline < green.bottom,
+);
+check(
+  'a fill that cannot brighten desaturates instead',
+  shading('#FFFF00').top.toLowerCase().startsWith('#ffff'),
+);
+check('deselected content is half alpha over white', dim('#00B200') === '#80d980');
+check(
+  'label text takes the readable side of its fill',
+  textOn('#FFFF00') === '#1A1A1A' && textOn('#00B200') === '#FFFFFF',
+);
+check('ruler numbers carry thousands separators', coordinate(6720) === '6,720');
+check(
+  'a label too long for the space it has is shortened, not clipped',
+  truncate('IgG1 hinge (EPKSCDKTHT)', 12) === 'IgG1 hinge…' && truncate('ori', 12) === 'ori',
+);
+check(
+  'circular ruler labels flip on the lower half to stay upright',
+  tangential(200) === 20 && tangential(20) === 20,
+);
+const arc = bandArcPath(1, 900, 3600, 100, 15, 1, 0, 0);
+check('a circular annotation is an arc band closed at the point', arc.split('A').length === 3);
+check(
+  'the backbone origin takes the Geneious rep_origin colour',
+  model.features.find((f) => f.name === 'ori')?.color === '#00A8F0',
 );
 
 console.log(`\n${failures === 0 ? 'All checks passed.' : `${failures} check(s) failed.`}`);

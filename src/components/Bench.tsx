@@ -1,4 +1,5 @@
 import { useState, type DragEvent } from 'react';
+import { Panel } from './Panel';
 import { RESOLUTION_LABELS } from '../model/parts';
 import { variantCount } from '../model/combinatorics';
 import { useApp, useDispatch } from '../state/store';
@@ -10,6 +11,12 @@ interface DropTarget {
   beforeId: string | null;
   container: string | null;
 }
+
+const RESOLUTION_TIPS: Record<Resolution, string> = {
+  1: 'Coarsest view: just the insert and the backbone it sits on',
+  2: 'Adds the linkers and hinges that join the domains',
+  3: 'Every component, including promoters and terminators',
+};
 
 export function Bench() {
   const state = useApp();
@@ -54,13 +61,20 @@ export function Bench() {
   }
 
   return (
-    <div className="panel grow" onDragEnd={() => setDrop(null)}>
+    <Panel
+      title="Chain bench"
+      tip="One row per chain. Each row is the chain's component composition, at the resolution you choose."
+      trailing={`${state.selection.length} selected`}
+      grow
+      onDragEnd={() => setDrop(null)}
+    >
       <div className="toolbar">
         <div className="seg">
           {([1, 2, 3] as Resolution[]).map((lvl) => (
             <button
               key={lvl}
               className={state.resolution === lvl ? 'active' : ''}
+              data-tip={RESOLUTION_TIPS[lvl]}
               onClick={() => dispatch({ type: 'set-resolution', level: lvl })}
             >
               {RESOLUTION_LABELS[lvl]}
@@ -70,6 +84,11 @@ export function Bench() {
         <button
           className="btn"
           disabled={selectedChains.length < 2}
+          data-tip={
+            selectedChains.length < 2
+              ? 'Select two or more chains to group them'
+              : `Group these ${selectedChains.length} chains so they move and register together`
+          }
           onClick={() => dispatch({ type: 'group-selected' })}
         >
           Group selected
@@ -77,29 +96,52 @@ export function Bench() {
         <button
           className="btn"
           disabled={selectedGroups.length === 0}
+          data-tip={
+            selectedGroups.length === 0
+              ? 'Select a group to break it apart'
+              : 'Break the selected groups back into individual chains'
+          }
           onClick={() => dispatch({ type: 'ungroup-selected' })}
         >
           Ungroup selected
         </button>
-        <button className="btn" disabled={!selectedChains.length} onClick={annotateSelected}>
+        <button
+          className="btn"
+          disabled={!selectedChains.length}
+          data-tip="Attach the same free-text note to every selected chain"
+          onClick={annotateSelected}
+        >
           Annotate selected
         </button>
         <span className="spacer" />
-        <button className="btn" onClick={() => dispatch({ type: 'add-chain', kind: 'heavy' })}>
+        <button
+          className="btn"
+          data-tip="Add an empty heavy chain to the bench"
+          onClick={() => dispatch({ type: 'add-chain', kind: 'heavy' })}
+        >
           + Heavy
         </button>
-        <button className="btn" onClick={() => dispatch({ type: 'add-chain', kind: 'light' })}>
+        <button
+          className="btn"
+          data-tip="Add an empty light chain to the bench"
+          onClick={() => dispatch({ type: 'add-chain', kind: 'light' })}
+        >
           + Light
         </button>
         <button
           className="btn"
           disabled={!focusedChain || variantCount(focusedChain) < 2}
-          title="Expand the stacked options on the focused chain into individual constructs"
+          data-tip={
+            focusedChain && variantCount(focusedChain) > 1
+              ? `Enumerate all ${variantCount(focusedChain)} combinations of the stacked options on ${
+                  focusedChain.name
+                }`
+              : 'Stack two options in one slot (shift-click a part) to enumerate combinations'
+          }
           onClick={() => dispatch({ type: 'open-gallery', chainId: state.focusChainId })}
         >
           Generate all
         </button>
-        <span className="sel-count">{state.selection.length} selected</span>
       </div>
 
       <div className="bench-list" onDragOver={(e) => e.preventDefault()}>
@@ -146,6 +188,11 @@ export function Bench() {
                 <button
                   className="btn ghost"
                   style={{ marginLeft: 'auto' }}
+                  data-tip={
+                    node.collapsed
+                      ? 'Show the chains inside this group'
+                      : 'Hide the chains inside this group'
+                  }
                   onClick={(e) => {
                     e.stopPropagation();
                     dispatch({ type: 'toggle-group-collapsed', groupId: node.id });
@@ -155,6 +202,7 @@ export function Bench() {
                 </button>
                 <button
                   className="btn"
+                  data-tip="Break this group apart, leaving its chains on the bench"
                   onClick={(e) => {
                     e.stopPropagation();
                     dispatch({ type: 'ungroup', groupId: node.id });
@@ -187,6 +235,6 @@ export function Bench() {
         chevron overrides resolution for that row alone; an amber dot means a part is set at a level
         you are not currently viewing. The × on a grouped row ejects just that chain.
       </p>
-    </div>
+    </Panel>
   );
 }

@@ -1,48 +1,71 @@
+import { Panel } from './Panel';
 import { buildMap, rulerTicks, type ConstructMapModel, type MapFeature } from '../model/geneious';
+import {
+  BAND_H,
+  BAR_H,
+  BLOCK_RULE,
+  CARET,
+  GUTTER_BG,
+  HEAD,
+  LABEL_FONT,
+  NAME_FONT,
+  OUTLINE_W,
+  RING_STROKE,
+  RING_W,
+  ROW_PITCH,
+  RULER_FONT,
+  RULER_TEXT,
+  RULER_TICK_H,
+  SELECT_BLUE,
+  SELECT_BORDER,
+  SELECT_FILL,
+  SEQUENCE_LINE,
+  SEQUENCE_W,
+  SHADOW_FAR,
+  SHADOW_NEAR,
+  arrowPath,
+  bandArcPath,
+  coordinate,
+  dim,
+  polar,
+  shading,
+  tangential,
+  textOn,
+  textWidth,
+  truncate,
+} from '../model/mapview';
 import { flatOrder, useApp, useDispatch } from '../state/store';
 import type { ChainDesign } from '../model/types';
 
 /**
- * Construct map, following Geneious Prime conventions (manual.geneious.com):
+ * Construct map, drawn to Geneious Prime's conventions (manual.geneious.com)
+ * with the geometry and shading measured from the published viewer:
  *
- * - Annotations are directional arrows over a coordinate ruler, labelled outside
- *   the feature, and grouped into tracks stacked under the sequence.
- * - A circular sequence defaults to the circular view; "linear view on circular
- *   sequences" lays the same construct out linearly without converting it.
- * - Clicking an annotation selects the region it covers, and that selection is
- *   shared with the other viewers.
- * - Several selected sequences are shown stacked, names at the left, on a common
- *   coordinate scale.
+ * - Annotations are gradient-shaded bars with a 45° point on the directional
+ *   end, a darker outline in their own hue and a two-row drop shadow. Labels sit
+ *   inside when they fit and are hidden rather than clipped when they do not.
+ * - The ruler has no baseline: grey numbers with a short tick below each.
+ * - Zoomed out the sequence collapses to a thin grey line the annotations
+ *   overlay, with the backbone as a track beneath it, named in the gutter.
+ * - Selecting a component dims everything outside it to half alpha over white,
+ *   and marks the boundaries with carets, bold blue coordinates and a length
+ *   callout.
+ * - A circular sequence draws a black backbone with the annotation band centred
+ *   on it, tangential ruler labels outside, and the name and length in the
+ *   middle. The linear view lays the same plasmid out without converting it.
  */
 
-const CX = 96;
-const CY = 96;
-const RING = 62;
-
-function polar(bp: number, totalBp: number, radius: number) {
-  const angle = (bp / totalBp) * 2 * Math.PI - Math.PI / 2;
-  return { x: CX + radius * Math.cos(angle), y: CY + radius * Math.sin(angle), angle };
-}
-
-/** Feature arc with an arrow head at its 3' end, on the strand's own radius. */
-function arcPath(feature: MapFeature, totalBp: number, radius: number) {
-  const head = Math.min((feature.end - feature.start) * 0.35, totalBp * 0.012);
-  const tipBp = feature.strand === 1 ? feature.end : feature.start;
-  const bodyEndBp = feature.strand === 1 ? feature.end - head : feature.start + head;
-  const from = feature.strand === 1 ? feature.start : feature.end;
-
-  const a = polar(from, totalBp, radius);
-  const b = polar(bodyEndBp, totalBp, radius);
-  const large = Math.abs(bodyEndBp - from) / totalBp > 0.5 ? 1 : 0;
-  const sweep = feature.strand === 1 ? 1 : 0;
-  const body = `M ${a.x.toFixed(1)} ${a.y.toFixed(1)} A ${radius} ${radius} 0 ${large} ${sweep} ${b.x.toFixed(1)} ${b.y.toFixed(1)}`;
-
-  const tip = polar(tipBp, totalBp, radius);
-  const outer = polar(bodyEndBp, totalBp, radius + 4.5);
-  const inner = polar(bodyEndBp, totalBp, radius - 4.5);
-  const arrow = `M ${outer.x.toFixed(1)} ${outer.y.toFixed(1)} L ${tip.x.toFixed(1)} ${tip.y.toFixed(1)} L ${inner.x.toFixed(1)} ${inner.y.toFixed(1)} Z`;
-  return { body, arrow };
-}
+const GUTTER = 96;
+/**
+ * The viewer keeps bar heights and fonts fixed and spends extra width on the
+ * coordinate axis, so the wide layout lengthens the track instead of scaling up.
+ */
+const TRACK_INSPECTOR = 236;
+const TRACK_WIDE = 700;
+/** Kept clear for the selection length callout, so the layout does not jump. */
+const CALLOUT_H = 12;
+const RULER_H = 15;
+const LANE_LABEL_H = 11;
 
 interface ViewProps {
   model: ConstructMapModel;
@@ -50,83 +73,171 @@ interface ViewProps {
   onSelect: (feature: MapFeature) => void;
 }
 
+/** Fill, outline and label colour for one annotation in its current state. */
+function paint(feature: MapFeature, dimmed: boolean) {
+  const base = dimmed ? dim(feature.color) : feature.color;
+  return { ...shading(base), base };
+}
+
+function Shadow({ d }: { d: string }) {
+  return (
+    <>
+      <path d={d} fill={SHADOW_FAR} transform="translate(0 2)" />
+      <path d={d} fill={SHADOW_NEAR} transform="translate(0 1)" />
+    </>
+  );
+}
+
+const CIRCLE = { cx: 168, cy: 172, r: 108 };
+
+/** How many characters fit between a label's anchor and the canvas edge. */
+function labelRoom(anchorX: number): number {
+  return Math.max(6, Math.floor((336 - anchorX - 6) / (LABEL_FONT * 0.55)));
+}
+
 function CircularView({ model, activeFeatureId, onSelect }: ViewProps) {
   const ticks = rulerTicks(model.totalBp);
+  const anySelected = model.features.some((f) => f.id === activeFeatureId);
+  const labelR = CIRCLE.r + BAND_H / 2 + 26;
 
   return (
-    <svg className="pad" viewBox="0 0 192 196" role="img" aria-label={`${model.name} plasmid map`}>
-      <circle cx={CX} cy={CY} r={RING} fill="none" stroke="#639922" strokeWidth={1.6} />
+    <svg
+      className="gmap-svg"
+      viewBox="0 0 336 348"
+      role="img"
+      aria-label={`${model.name} plasmid map`}
+    >
+      <circle
+        cx={CIRCLE.cx}
+        cy={CIRCLE.cy}
+        r={CIRCLE.r}
+        fill="none"
+        stroke={RING_STROKE}
+        strokeWidth={RING_W}
+      />
 
       {ticks.map((bp) => {
-        const inner = polar(bp, model.totalBp, RING - 4);
-        const outer = polar(bp, model.totalBp, RING + 4);
-        const label = polar(bp, model.totalBp, RING + 12);
+        const from = polar(bp, model.totalBp, CIRCLE.r + BAND_H / 2, CIRCLE.cx, CIRCLE.cy);
+        const to = polar(bp, model.totalBp, CIRCLE.r + BAND_H / 2 + 4, CIRCLE.cx, CIRCLE.cy);
+        const at = polar(bp, model.totalBp, CIRCLE.r + BAND_H / 2 + 11, CIRCLE.cx, CIRCLE.cy);
         return (
           <g key={bp}>
-            <line x1={inner.x} y1={inner.y} x2={outer.x} y2={outer.y} stroke="var(--border-strong)" strokeWidth={0.8} />
+            <line x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke={RULER_TEXT} strokeWidth={1} />
             <text
-              x={label.x}
-              y={label.y + 2}
+              transform={`translate(${at.x} ${at.y}) rotate(${tangential(at.deg)})`}
               textAnchor="middle"
-              fontSize="5.5"
-              fill="var(--text-muted)"
+              dominantBaseline="middle"
+              fontSize={RULER_FONT}
+              fill={RULER_TEXT}
             >
-              {bp >= 1000 ? `${(bp / 1000).toFixed(1)}k` : bp}
+              {coordinate(bp)}
             </text>
           </g>
         );
       })}
 
       {model.features.map((feature) => {
-        // Insert annotations sit on the sequence; backbone features form a track
-        // on their own radius inside it.
-        const radius = feature.track === 'insert' ? RING : RING - 13;
-        const { body, arrow } = arcPath(feature, model.totalBp, radius);
-        const active = feature.id === activeFeatureId;
+        const selected = feature.id === activeFeatureId;
+        const colors = paint(feature, anySelected && !selected);
+        const d = bandArcPath(
+          feature.start,
+          feature.end,
+          model.totalBp,
+          CIRCLE.r,
+          BAND_H,
+          feature.strand,
+          CIRCLE.cx,
+          CIRCLE.cy,
+        );
+        const span = ((feature.end - feature.start) / model.totalBp) * 360;
+        const mid = polar(
+          (feature.start + feature.end) / 2,
+          model.totalBp,
+          CIRCLE.r + BAND_H / 2,
+          CIRCLE.cx,
+          CIRCLE.cy,
+        );
+        const label = polar(
+          (feature.start + feature.end) / 2,
+          model.totalBp,
+          labelR,
+          CIRCLE.cx,
+          CIRCLE.cy,
+        );
+        // Crowded labels are dropped rather than clipped, per "hide excessive
+        // labels"; the selected one is always drawn.
+        const showLabel = span >= 26 || selected;
+        const right = label.x >= CIRCLE.cx;
+
         return (
           <g
             key={feature.id}
+            data-tip={`${feature.name} · ${coordinate(feature.start)}–${coordinate(feature.end)} (${
+              feature.strand === 1 ? '+' : '−'
+            })${feature.chainId ? ' — click to select this component everywhere' : ''}`}
             style={{ cursor: feature.chainId ? 'pointer' : 'default' }}
             onClick={() => onSelect(feature)}
           >
             <path
-              d={body}
-              fill="none"
-              stroke={active ? 'var(--border-accent)' : feature.color}
-              strokeOpacity={feature.empty ? 0.45 : feature.fromVector ? 0.6 : 1}
-              strokeWidth={active ? 8.5 : 6.5}
-              strokeDasharray={feature.empty ? '2 3' : undefined}
+              d={d}
+              fill={feature.empty ? 'none' : colors.mid}
+              stroke={selected ? SELECT_BLUE : colors.outline}
+              strokeWidth={selected ? 2 : OUTLINE_W}
+              strokeDasharray={feature.empty ? '2 2' : undefined}
             />
-            <path
-              d={arrow}
-              fill={active ? 'var(--border-accent)' : feature.color}
-              fillOpacity={feature.empty ? 0.45 : feature.fromVector ? 0.6 : 1}
-            />
-            <title>{`${feature.name} · ${feature.start.toLocaleString()}–${feature.end.toLocaleString()} (${feature.strand === 1 ? '+' : '−'})`}</title>
+            {showLabel && (
+              <>
+                <line
+                  x1={mid.x}
+                  y1={mid.y}
+                  x2={label.x}
+                  y2={label.y}
+                  stroke={colors.outline}
+                  strokeWidth={1}
+                />
+                <text
+                  x={right ? Math.min(label.x + 3, 332) : Math.max(label.x - 3, 4)}
+                  y={label.y}
+                  textAnchor={right ? 'start' : 'end'}
+                  dominantBaseline="middle"
+                  fontSize={LABEL_FONT}
+                  fontWeight={selected ? 600 : 400}
+                  fill={colors.outline}
+                >
+                  {truncate(feature.name, right ? labelRoom(label.x) : labelRoom(336 - label.x))}
+                </text>
+              </>
+            )}
           </g>
         );
       })}
 
-      <text x={CX} y={CY - 4} textAnchor="middle" fontSize="9" fill="var(--text-primary)">
-        {model.ccId ?? 'unassembled'}
+      <text
+        x={CIRCLE.cx}
+        y={CIRCLE.cy - 4}
+        textAnchor="middle"
+        fontSize={NAME_FONT}
+        fill="#404040"
+      >
+        {model.ccId ?? model.name}
       </text>
-      <text x={CX} y={CY + 8} textAnchor="middle" fontSize="7.5" fill="var(--text-muted)">
-        {model.totalBp.toLocaleString()} bp
-      </text>
-      <text x={CX} y={CY + 19} textAnchor="middle" fontSize="7" fill="var(--text-muted)">
-        {model.circular ? 'circular' : 'linear insert only'}
+      <text
+        x={CIRCLE.cx}
+        y={CIRCLE.cy + 11}
+        textAnchor="middle"
+        fontSize={NAME_FONT}
+        fill="#404040"
+      >
+        {coordinate(model.totalBp)} bp
       </text>
     </svg>
   );
 }
 
-const LANE_H = 15;
-const LEFT_GUTTER = 84;
-const TRACK_W = 250;
-
 /**
- * One construct laid out linearly: ruler on top, insert then backbone track.
- * Every row in a stack shares `scaleBp`, so lengths are directly comparable.
+ * One construct laid out linearly: ruler, then the sequence line with its
+ * annotations, then the backbone as its own track. Every row in a stack shares
+ * `scaleBp`, so lengths are directly comparable.
  */
 function LinearRow({
   model,
@@ -134,93 +245,227 @@ function LinearRow({
   onSelect,
   showRuler,
   scaleBp,
-}: ViewProps & { showRuler: boolean; scaleBp: number }) {
-  const scale = (bp: number) => LEFT_GUTTER + (bp / scaleBp) * TRACK_W;
-  const tracks: Array<'insert' | 'backbone'> = ['insert', 'backbone'];
-  const height = LANE_H * tracks.length + (showRuler ? 14 : 4);
-  const ticks = rulerTicks(scaleBp);
+  separator,
+  trackW,
+}: ViewProps & {
+  showRuler: boolean;
+  scaleBp: number;
+  separator: boolean;
+  trackW: number;
+}) {
+  const rowW = GUTTER + trackW + 10;
+  const x = (bp: number) => GUTTER + (bp / scaleBp) * trackW;
+  const lanes: Array<'insert' | 'backbone'> = ['insert', 'backbone'];
+  const top = CALLOUT_H + (showRuler ? RULER_H : 4);
+  const height = top + lanes.length * (ROW_PITCH + LANE_LABEL_H) + 4;
+  const ticks = rulerTicks(scaleBp, Math.round(trackW / 76));
+  const selected = model.features.find((f) => f.id === activeFeatureId);
+  const anySelected = !!selected;
 
   return (
     <svg
-      className="linear-row"
-      viewBox={`0 0 ${LEFT_GUTTER + TRACK_W + 8} ${height}`}
+      className="gmap-svg"
+      viewBox={`0 0 ${rowW} ${height}`}
       role="img"
       aria-label={`${model.name} linear map`}
     >
+      <rect x={0} y={0} width={GUTTER} height={height} fill={GUTTER_BG} />
+      {/* Stacked blocks are separated by a hairline across the full width. */}
+      {separator && <line x1={0} y1={0.5} x2={rowW} y2={0.5} stroke={BLOCK_RULE} strokeWidth={1} />}
+
+      {/* The ruler carries no baseline: numbers, then a tick under each. */}
       {showRuler && (
         <g>
-          <line
-            x1={LEFT_GUTTER}
-            y1={9}
-            x2={scale(scaleBp)}
-            y2={9}
-            stroke="var(--border-strong)"
-            strokeWidth={0.6}
-          />
-          {ticks.map((bp) => (
-            <g key={bp}>
-              <line x1={scale(bp)} y1={6} x2={scale(bp)} y2={9} stroke="var(--border-strong)" strokeWidth={0.6} />
-              <text x={scale(bp)} y={5} textAnchor="middle" fontSize="4.6" fill="var(--text-muted)">
-                {bp >= 1000 ? `${(bp / 1000).toFixed(1)}k` : bp}
+          {ticks
+            // A boundary label takes precedence over a round one it would sit on.
+            .filter(
+              (bp) =>
+                !selected ||
+                [selected.start, selected.end].every((edge) => Math.abs(x(bp) - x(edge)) > 15),
+            )
+            .map((bp) => (
+              <g key={bp}>
+                <text
+                  x={x(bp)}
+                  y={CALLOUT_H + 8}
+                  textAnchor="middle"
+                  fontSize={RULER_FONT}
+                  fill={RULER_TEXT}
+                >
+                  {coordinate(bp)}
+                </text>
+                <line
+                  x1={x(bp)}
+                  y1={CALLOUT_H + 11}
+                  x2={x(bp)}
+                  y2={CALLOUT_H + 11 + RULER_TICK_H}
+                  stroke={RULER_TEXT}
+                  strokeWidth={1}
+                />
+              </g>
+            ))}
+          {/* Selection boundaries add their own coordinate, bold and blue. */}
+          {selected &&
+            [selected.start, selected.end].map((bp) => (
+              <text
+                key={bp}
+                x={x(bp)}
+                y={CALLOUT_H + 8}
+                textAnchor="middle"
+                fontSize={RULER_FONT}
+                fontWeight={700}
+                fill={SELECT_BLUE}
+              >
+                {coordinate(bp)}
               </text>
-            </g>
-          ))}
+            ))}
         </g>
       )}
 
-      <text x={0} y={(showRuler ? 14 : 4) + 9} fontSize="6.4" fill="var(--text-primary)">
-        {model.name.length > 20 ? `${model.name.slice(0, 19)}…` : model.name}
+      {selected && (
+        <g>
+          {[selected.start, selected.end].map((bp) => (
+            <line
+              key={bp}
+              x1={x(bp)}
+              y1={CALLOUT_H}
+              x2={x(bp)}
+              y2={height}
+              stroke={CARET}
+              strokeWidth={1}
+            />
+          ))}
+          <rect
+            x={Math.max(x(selected.start), 2)}
+            y={0}
+            width={54}
+            height={11}
+            rx={2}
+            fill={SELECT_FILL}
+            stroke={SELECT_BORDER}
+            strokeWidth={1}
+          />
+          <text
+            x={Math.max(x(selected.start), 2) + 27}
+            y={8}
+            textAnchor="middle"
+            fontSize={RULER_FONT}
+            fill={SELECT_BORDER}
+          >
+            {coordinate(selected.end - selected.start + 1)} bp
+          </text>
+        </g>
+      )}
+
+      {/* Sequence name in the gutter, kept inside it. */}
+      <text x={4} y={top + 9} fontSize={NAME_FONT} fill="#1A1A1A">
+        {truncate(model.name, Math.floor((GUTTER - 8) / (NAME_FONT * 0.55)))}
       </text>
-      <text x={0} y={(showRuler ? 14 : 4) + 17} fontSize="5.4" fill="var(--text-muted)">
-        {model.ccId ?? 'unassembled'} · {(model.totalBp / 1000).toFixed(1)} kb
+      <text x={4} y={top + 20} fontSize={RULER_FONT} fill={RULER_TEXT}>
+        {coordinate(model.totalBp)} bp
       </text>
 
-      {tracks.map((track, laneIndex) => {
-        const y = (showRuler ? 14 : 4) + laneIndex * LANE_H;
+      {lanes.map((lane, laneIndex) => {
+        const laneTop = top + LANE_LABEL_H + laneIndex * (ROW_PITCH + LANE_LABEL_H);
+        const centre = laneTop + BAR_H / 2;
+        const features = model.features.filter((f) => f.track === lane);
+        if (lane === 'backbone' && !features.length) return null;
+
         return (
-          <g key={track}>
-            {/* The sequence line stops at this construct's own end. */}
+          <g key={lane}>
+            {/* Track name in the gutter, as Geneious labels each track. */}
+            {lane === 'backbone' && (
+              <text x={4} y={laneTop - 3} fontSize={RULER_FONT} fill={RULER_TEXT}>
+                {model.vectorName ?? 'backbone'}
+              </text>
+            )}
             <line
-              x1={LEFT_GUTTER}
-              y1={y + LANE_H / 2}
-              x2={scale(model.totalBp)}
-              y2={y + LANE_H / 2}
-              stroke="var(--border)"
-              strokeWidth={track === 'insert' ? 1.2 : 0.6}
+              x1={GUTTER}
+              y1={centre}
+              x2={x(model.totalBp)}
+              y2={centre}
+              stroke={anySelected ? dim(SEQUENCE_LINE) : SEQUENCE_LINE}
+              strokeWidth={lane === 'insert' ? SEQUENCE_W : SEQUENCE_W - 1}
             />
-            {model.features
-              .filter((f) => f.track === track)
-              .map((feature) => {
-                const x0 = scale(feature.start);
-                const x1 = scale(feature.end);
-                const w = Math.max(x1 - x0, 1.6);
-                const head = Math.min(w * 0.4, 3.4);
-                const top = y + 3;
-                const h = LANE_H - 8;
-                const active = feature.id === activeFeatureId;
-                // Directional arrow, per Geneious "show arrow tips".
-                const points =
-                  feature.strand === 1
-                    ? `${x0},${top} ${x0 + w - head},${top} ${x0 + w},${top + h / 2} ${x0 + w - head},${top + h} ${x0},${top + h}`
-                    : `${x0 + w},${top} ${x0 + head},${top} ${x0},${top + h / 2} ${x0 + head},${top + h} ${x0 + w},${top + h}`;
-                return (
-                  <g
-                    key={feature.id}
-                    style={{ cursor: feature.chainId ? 'pointer' : 'default' }}
-                    onClick={() => onSelect(feature)}
-                  >
-                    <polygon
-                      points={points}
-                      fill={feature.empty ? 'none' : feature.color}
-                      fillOpacity={feature.fromVector ? 0.55 : 1}
-                      stroke={active ? 'var(--border-accent)' : feature.color}
-                      strokeWidth={active ? 1.5 : 0.5}
-                      strokeDasharray={feature.empty ? '1.5 1.5' : undefined}
-                    />
-                    <title>{`${feature.name} · ${feature.start.toLocaleString()}–${feature.end.toLocaleString()} (${feature.strand === 1 ? '+' : '−'})`}</title>
-                  </g>
-                );
-              })}
+
+            {features.map((feature) => {
+              const x0 = x(feature.start);
+              const w = Math.max(x(feature.end) - x0, 2);
+              const isSelected = feature.id === activeFeatureId;
+              const colors = paint(feature, anySelected && !isSelected);
+              const d = arrowPath(x0, laneTop, w, feature.strand);
+              const gradientId = `g-${feature.id}-${colors.mid.slice(1)}`;
+              const fits = textWidth(feature.name, LABEL_FONT) + 8 <= w - HEAD;
+
+              return (
+                <g
+                  key={feature.id}
+                  data-tip={`${feature.name} · ${coordinate(feature.start)}–${coordinate(
+                    feature.end,
+                  )} (${feature.strand === 1 ? '+' : '−'})${
+                    feature.fromVector ? ' — supplied by the backbone' : ''
+                  }${feature.chainId ? ' — click to select this component everywhere' : ''}`}
+                  style={{ cursor: feature.chainId ? 'pointer' : 'default' }}
+                  onClick={() => onSelect(feature)}
+                >
+                  {!feature.empty && (
+                    <>
+                      <defs>
+                        <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor={colors.top} />
+                          <stop offset="45%" stopColor={colors.mid} />
+                          <stop offset="100%" stopColor={colors.bottom} />
+                        </linearGradient>
+                      </defs>
+                      <Shadow d={d} />
+                    </>
+                  )}
+                  <path
+                    d={d}
+                    fill={feature.empty ? 'none' : `url(#${gradientId})`}
+                    stroke={isSelected ? SELECT_BLUE : colors.outline}
+                    strokeWidth={isSelected ? 2 : OUTLINE_W}
+                    strokeDasharray={feature.empty ? '2 2' : undefined}
+                  />
+                  {fits && !feature.empty && (
+                    <text
+                      x={x0 + (w - HEAD) / 2}
+                      y={laneTop + BAR_H / 2}
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                      fontSize={LABEL_FONT}
+                      fontWeight={isSelected ? 700 : 400}
+                      fill={textOn(colors.mid)}
+                    >
+                      {feature.name}
+                    </text>
+                  )}
+                  {/* Too narrow to letter: the label moves outside, with a leader. */}
+                  {!fits && isSelected && (
+                    <>
+                      <line
+                        x1={x0 + w / 2}
+                        y1={laneTop + BAR_H + 2}
+                        x2={x0 + w / 2}
+                        y2={laneTop + BAR_H + 7}
+                        stroke={colors.outline}
+                        strokeWidth={1}
+                      />
+                      <text
+                        x={Math.min(Math.max(x0 + w / 2, GUTTER + 40), GUTTER + trackW - 40)}
+                        y={laneTop + BAR_H + 15}
+                        textAnchor="middle"
+                        fontSize={LABEL_FONT}
+                        fontWeight={700}
+                        fill={colors.outline}
+                      >
+                        {truncate(feature.name, 30)}
+                      </text>
+                    </>
+                  )}
+                </g>
+              );
+            })}
           </g>
         );
       })}
@@ -258,8 +503,8 @@ export function ConstructMap() {
 
   const scaleBp = Math.max(...models.map((m) => m.totalBp));
 
-  const stack = (
-    <div className="linear-stack">
+  const stackAt = (trackW: number) => (
+    <div className="gmap">
       {models.map((model, i) => (
         <LinearRow
           key={model.chainId}
@@ -268,20 +513,19 @@ export function ConstructMap() {
           onSelect={select}
           showRuler={i === 0}
           scaleBp={scaleBp}
+          separator={i > 0}
+          trackW={trackW}
         />
       ))}
     </div>
   );
 
   return (
-    <div className="panel">
-      <p className="panel-title">
-        Construct map
-        <span className="count">
-          {multi ? `${models.length} constructs selected` : models[0].name}
-        </span>
-      </p>
-
+    <Panel
+      title="Construct map"
+      tip="The DNA that codes the design: directional annotations over a coordinate ruler, with the backbone on its own track"
+      trailing={multi ? `${models.length} constructs selected` : models[0].name}
+    >
       <div className="pad-controls">
         <div className="seg">
           {(['circular', 'linear'] as const).map((view) => (
@@ -289,12 +533,14 @@ export function ConstructMap() {
               key={view}
               className={(multi ? view === 'linear' : state.constructView === view) ? 'active' : ''}
               disabled={multi || (view === 'circular' && !models[0].circular)}
-              title={
+              data-tip={
                 multi
-                  ? 'Multiple constructs are always compared linearly'
+                  ? 'Several selected constructs are always compared linearly, on one shared scale'
                   : view === 'circular'
-                    ? 'Circular view'
-                    : 'Linear view on circular sequence'
+                    ? models[0].circular
+                      ? 'Plasmid view: the whole construct as a circle'
+                      : 'No backbone assigned yet, so there is no plasmid to draw — assign a vector first'
+                    : 'Lay the same plasmid out linearly, without converting the sequence'
               }
               onClick={() => dispatch({ type: 'set-construct-view', view })}
             >
@@ -305,16 +551,18 @@ export function ConstructMap() {
         <button
           className="btn"
           onClick={() => dispatch({ type: 'expand-map', expanded: true })}
-          title="Open the map full width"
+          data-tip="Open the linear map full width, where long constructs are easier to read"
         >
           Expand
         </button>
       </div>
 
       {linear ? (
-        stack
+        stackAt(TRACK_INSPECTOR)
       ) : (
-        <CircularView model={models[0]} activeFeatureId={activeFeatureId} onSelect={select} />
+        <div className="gmap">
+          <CircularView model={models[0]} activeFeatureId={activeFeatureId} onSelect={select} />
+        </div>
       )}
 
       {!multi && (
@@ -325,7 +573,11 @@ export function ConstructMap() {
           </div>
           <div className="kv">
             <span>Insert</span>
-            <span>{models[0].insertBp.toLocaleString()} bp</span>
+            <span>{coordinate(models[0].insertBp)} bp</span>
+          </div>
+          <div className="kv">
+            <span>Construct</span>
+            <span className="mono">{models[0].ccId ?? 'unassembled'}</span>
           </div>
           <div className="kv">
             <span>Registered</span>
@@ -336,8 +588,8 @@ export function ConstructMap() {
 
       <p className="pair-note">
         {multi
-          ? 'Selected constructs share one coordinate scale, insert annotations on the sequence and backbone features on the track below. Click any annotation to select that component everywhere.'
-          : 'Annotations are directional; the backbone track sits inside the insert. Click an annotation to select the component on the bench and the design pad.'}
+          ? 'Selected constructs share one coordinate scale, insert annotations on the sequence line and backbone features on the track below. Click any annotation to select that component everywhere.'
+          : 'Annotations point in their strand direction. Clicking one selects the component on the bench and the design pad, dims everything outside it and marks the boundaries on the ruler. Labels that would not fit their annotation are hidden rather than clipped.'}
       </p>
 
       {state.mapExpanded && (
@@ -346,14 +598,18 @@ export function ConstructMap() {
             <div className="sheet-header">
               <h2>Construct map — {multi ? `${models.length} constructs` : models[0].name}</h2>
               <span style={{ marginLeft: 'auto' }} />
-              <button className="btn" onClick={() => dispatch({ type: 'expand-map', expanded: false })}>
+              <button
+                className="btn"
+                data-tip="Return the map to the inspector column"
+                onClick={() => dispatch({ type: 'expand-map', expanded: false })}
+              >
                 Close
               </button>
             </div>
-            <div className="sheet-body wide">{stack}</div>
+            <div className="sheet-body wide">{stackAt(TRACK_WIDE)}</div>
           </div>
         </div>
       )}
-    </div>
+    </Panel>
   );
 }

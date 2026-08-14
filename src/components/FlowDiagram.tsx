@@ -1,3 +1,4 @@
+import { Panel } from './Panel';
 import { flowState, type FlowStepId, type NodeStatus } from '../model/flow';
 import { useApp, useDispatch } from '../state/store';
 
@@ -178,28 +179,36 @@ export function FlowDiagram() {
   const dim = (id: FlowStepId) => flow.statuses[id] === 'skipped';
 
   return (
-    <div className="panel">
-      <div className="flow-header">
-        <p className="panel-title" style={{ margin: 0 }}>
-          Cloning loop
-        </p>
-        <span className="badge">{chain.name}</span>
-        <span className="flow-next">Next: {flow.next.label}</span>
-        <button
-          className="btn"
-          disabled={flow.next.kind !== 'assemble' && flow.next.kind !== 'register'}
-          onClick={() =>
-            dispatch(
+    <Panel
+      title="Cloning loop"
+      tip="Where the focused chain sits in the process: the highlighted node is the current step, and dimmed nodes are branches it did not take"
+      trailing={
+        <>
+          <span className="badge">{chain.name}</span>
+          <span className="flow-next">Next: {flow.next.label}</span>
+          <button
+            className="btn"
+            disabled={flow.next.kind !== 'assemble' && flow.next.kind !== 'register'}
+            data-tip={
               flow.next.kind === 'register'
-                ? { type: 'register', chainId: chain.id }
-                : { type: 'assemble', chainId: chain.id },
-            )
-          }
-        >
-          {flow.next.kind === 'register' ? 'Register' : 'Assemble'}
-        </button>
-      </div>
-
+                ? 'Register this chain now — it has passed QC'
+                : flow.next.kind === 'assemble'
+                  ? 'Assemble the insert with the backbone now'
+                  : `The next step is “${flow.next.label}”, which happens on the bench rather than here`
+            }
+            onClick={() =>
+              dispatch(
+                flow.next.kind === 'register'
+                  ? { type: 'register', chainId: chain.id }
+                  : { type: 'assemble', chainId: chain.id },
+              )
+            }
+          >
+            {flow.next.kind === 'register' ? 'Register' : 'Assemble'}
+          </button>
+        </>
+      }
+    >
       <svg
         className="flow-svg"
         viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
@@ -326,6 +335,6 @@ export function FlowDiagram() {
         <span className="flow-key done" /> completed
         <span className="flow-key skipped" /> branch not taken
       </p>
-    </div>
+    </Panel>
   );
 }

@@ -1,3 +1,4 @@
+import { Panel } from './Panel';
 import { flowState } from '../model/flow';
 import { variantCount } from '../model/combinatorics';
 import { flatOrder, useApp, useDispatch } from '../state/store';
@@ -8,14 +9,13 @@ export function WorklistStrip() {
   const chainIds = flatOrder(state.bench).filter((id) => state.chains[id]);
 
   return (
-    <div className="panel">
-      <p className="panel-title">
-        Worklist
-        <span className="count">
-          {chainIds.filter((id) => state.chains[id].regIds.length).length} of {chainIds.length}{' '}
-          registered
-        </span>
-      </p>
+    <Panel
+      title="Worklist"
+      tip="Every chain in this design session and how far each one has travelled through the cloning loop"
+      trailing={`${chainIds.filter((id) => state.chains[id].regIds.length).length} of ${
+        chainIds.length
+      } registered`}
+    >
       <div className="worklist">
         {chainIds.map((id) => {
           const chain = state.chains[id];
@@ -25,6 +25,7 @@ export function WorklistStrip() {
             <button
               key={id}
               className={`wl-card${state.focusChainId === id ? ' focused' : ''}`}
+              data-tip={`Focus ${chain.name} — ${chain.kind} chain. Next step: ${flow.next.label}`}
               onClick={() => {
                 dispatch({ type: 'focus-chain', chainId: id });
                 dispatch({ type: 'select', id, mode: 'single' });
@@ -44,6 +45,6 @@ export function WorklistStrip() {
           );
         })}
       </div>
-    </div>
+    </Panel>
   );
 }
