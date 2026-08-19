@@ -2,7 +2,6 @@ import { createContext, useContext, type Dispatch } from 'react';
 import {
   INITIAL_COUNTERS,
   initialChains,
-  initialFormat,
   initialRegistry,
   makeChain,
   mintId,
@@ -20,6 +19,15 @@ import {
   moleculeSignature,
   moleculeTargets,
 } from '../model/molecule';
+import {
+  benchFromChainIds,
+  initialPlate,
+  isDefaultChainName,
+  nameFromVRegion,
+  unbindChainFromFormat,
+  uniqueChainIds,
+  wellRange,
+} from '../model/plate';
 import { runQc } from '../model/qc';
 import type {
   Alphabet,
@@ -34,6 +42,7 @@ import type {
   FormatDesign,
   Insert,
   PartType,
+  PlateWell,
   Registry,
   Resolution,
 } from '../model/types';
@@ -63,6 +72,10 @@ export interface AppState {
   alphabet: Alphabet;
   /** The molecule under design on the pad. */
   format: FormatDesign;
+  /** 96-well campaign plate; each well is a molecule made of shared chains. */
+  plate: PlateWell[];
+  selectedWells: string[];
+  lastSelectedWellId: string | null;
   /** Geneious-style view mode; multiple selected constructs force linear. */
   constructView: 'circular' | 'linear';
   /** Pad glyphs colored by target (BioGlyph) or by part category (spec 8a). */
@@ -88,8 +101,10 @@ export type Action =
   | { type: 'edit-construct'; chainId: string }
   | { type: 'register'; chainId: string }
   | { type: 'add-chain'; kind: ChainKind }
-  /** Drop an unregistered chain from the bench. Registered inventory stays. */
+  /** Drop an unregistered chain from the selected wells, and from the catalog if unused. */
   | { type: 'remove-chain'; chainId: string }
+  | { type: 'rename-chain'; chainId: string; name: string }
+  | { type: 'select-wells'; wellId: string; mode: 'single' | 'toggle' | 'range' }
   | { type: 'select'; id: string; mode: 'single' | 'toggle' | 'range' }
   | { type: 'clear-selection' }
   | { type: 'group-selected' }
@@ -132,18 +147,22 @@ export type Action =
 
 export function createInitialState(): AppState {
   const chains = initialChains();
+  const plate = initialPlate();
   return {
     registry: initialRegistry(),
     counters: INITIAL_COUNTERS,
     chains: Object.fromEntries(chains.map((c) => [c.id, c])),
-    bench: chains.map((c) => ({ kind: 'chain', id: c.id }) as BenchNode),
+    plate,
+    selectedWells: ['A1'],
+    lastSelectedWellId: 'A1',
+    bench: benchFromChainIds(plate[0].chainIds),
     selection: [],
     lastSelectedId: null,
     focusChainId: chains[1].id,
     activeSlot: null,
     resolution: 1,
     alphabet: 'nt',
-    format: initialFormat(),
+    format: plate[0].format,
     constructView: 'circular',
     padColor: 'target',
     galleryChainId: null,
@@ -216,6 +235,47 @@ function groupOf(bench: BenchNode[], chainId: string): BenchGroup | null {
   return null;
 }
 
+function primaryWellId(state: AppState): string | null {
+  return state.lastSelectedWellId ?? state.selectedWells[0] ?? null;
+}
+
+function applyWellSelection(state: AppState, wellIds: string[], lastId: string): AppState {
+  const chosen = new Set(wellIds);
+  const wells = state.plate.filter((w) => chosen.has(w.id));
+  const chainIds = uniqueChainIds(wells).filter((id) => state.chains[id]);
+  const primary = state.plate.find((w) => w.id === lastId);
+  return {
+    ...state,
+    selectedWells: wellIds,
+    lastSelectedWellId: lastId,
+    bench: benchFromChainIds(chainIds),
+    format: primary?.format ?? state.format,
+    selection: [],
+    lastSelectedId: null,
+    focusChainId: chainIds.includes(state.focusChainId)
+      ? state.focusChainId
+      : (chainIds.find((id) => state.chains[id]?.kind === 'heavy') ?? chainIds[0] ?? state.focusChainId),
+  };
+}
+
+function syncPrimaryWell(state: AppState): AppState {
+  const id = primaryWellId(state);
+  if (!id) return state;
+  return {
+    ...state,
+    plate: state.plate.map((w) => (w.id === id ? { ...w, format: state.format } : w)),
+  };
+}
+
+function attachChainToWells(plate: PlateWell[], wellIds: string[], chainId: string): PlateWell[] {
+  const chosen = new Set(wellIds);
+  return plate.map((w) =>
+    chosen.has(w.id) && !w.chainIds.includes(chainId)
+      ? { ...w, chainIds: [...w.chainIds, chainId] }
+      : w,
+  );
+}
+
 /** Reuse an identical insert if one already exists, otherwise mint a new INS-id. */
 function resolveInsert(
   registry: Registry,
@@ -261,12 +321,21 @@ export function reducer(state: AppState, action: Action): AppState {
         return { ...s, blockIds: [action.blockId] };
       });
       const block = state.registry.blocks[action.blockId];
+      const slot = chain.slots[action.slotIndex];
+      let name = chain.name;
+      if (
+        block &&
+        (slot?.type === 'vh' || slot?.type === 'vl') &&
+        isDefaultChainName(chain.name)
+      ) {
+        name = nameFromVRegion(block, chain.kind) ?? chain.name;
+      }
       return {
-        ...withChain(state, action.chainId, (c) => ({ ...c, slots })),
+        ...withChain(state, action.chainId, (c) => ({ ...c, slots, name })),
         log: log(
           state,
           'edit',
-          `${block?.name ?? action.blockId} ? ${chain.name}${action.stack ? ' (stacked)' : ''}`,
+          `${block?.name ?? action.blockId} ? ${name}${action.stack ? ' (stacked)' : ''}`,
         ),
       };
     }
@@ -412,7 +481,7 @@ export function reducer(state: AppState, action: Action): AppState {
       }));
       // Reopening a chain the molecule is built from unsettles the molecule too.
       const inMolecule = moleculeChainIds(state.format).includes(action.chainId);
-      return {
+      return syncPrimaryWell({
         ...reopened,
         format: inMolecule ? { ...state.format, moleculeId: null } : state.format,
         log: log(
@@ -420,7 +489,7 @@ export function reducer(state: AppState, action: Action): AppState {
           'edit',
           `${state.chains[action.chainId]?.name ?? ''} reopened for editing - next assembly mints a new CC-id`,
         ),
-      };
+      });
     }
 
     case 'register': {
@@ -465,55 +534,93 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'add-chain': {
       const [id, counters] = mintId(state.counters, 'CH');
       const count = Object.values(state.chains).filter((c) => c.kind === action.kind).length + 1;
-      const chain = makeChain(id, `New ${action.kind} chain ${count}`, action.kind);
+      const want = action.kind === 'heavy' ? 'vh' : 'vl';
+      const source = state.activeSlot
+        ? state.chains[state.activeSlot.chainId]?.slots[state.activeSlot.slotIndex]
+        : undefined;
+      const sourceBlock =
+        source?.type === want && source.blockIds[0]
+          ? state.registry.blocks[source.blockIds[0]]
+          : undefined;
+      const name =
+        nameFromVRegion(sourceBlock, action.kind) ?? `New ${action.kind} chain ${count}`;
+      let chain = makeChain(id, name, action.kind);
+      if (sourceBlock) {
+        chain = {
+          ...chain,
+          slots: chain.slots.map((s) =>
+            s.type === want ? { ...s, blockIds: [sourceBlock.id] } : s,
+          ),
+        };
+      }
+      const wellIds = state.selectedWells.length ? state.selectedWells : ['A1'];
       return {
         ...state,
         counters,
         chains: { ...state.chains, [id]: chain },
+        plate: attachChainToWells(state.plate, wellIds, id),
         bench: [...state.bench, { kind: 'chain', id }],
         focusChainId: id,
+        log: log(state, 'edit', `${name} added to the bench`),
       };
+    }
+
+    case 'rename-chain': {
+      const chain = state.chains[action.chainId];
+      if (!chain || chain.name === action.name) return state;
+      return withChain(state, action.chainId, (c) => ({ ...c, name: action.name }));
+    }
+
+    case 'select-wells': {
+      let wellIds: string[];
+      if (action.mode === 'toggle') {
+        wellIds = state.selectedWells.includes(action.wellId)
+          ? state.selectedWells.filter((id) => id !== action.wellId)
+          : [...state.selectedWells, action.wellId];
+        if (!wellIds.length) wellIds = [action.wellId];
+      } else if (action.mode === 'range' && state.lastSelectedWellId) {
+        wellIds = wellRange(state.lastSelectedWellId, action.wellId);
+      } else {
+        wellIds = [action.wellId];
+      }
+      const lastId = action.wellId;
+      return applyWellSelection(state, wellIds, lastId);
     }
 
     case 'remove-chain': {
       const chain = state.chains[action.chainId];
       if (!chain || chain.regIds.length) return state;
 
-      const chains = { ...state.chains };
-      delete chains[action.chainId];
-      const bench = removeFromBench(state.bench, action.chainId);
-      const nextFocus =
-        state.focusChainId === action.chainId
-          ? (flatOrder(bench).find((id) => chains[id]) ?? '')
-          : state.focusChainId;
-
-      let formatTouched = false;
-      const arms = { ...state.format.arms };
-      (['left', 'right'] as ArmId[]).forEach((armId) => {
-        const arm = arms[armId];
-        if (arm.heavyChainId === action.chainId) {
-          arms[armId] = { ...arm, bb: 'empty', heavyChainId: null, lightChainId: null, fused: [] };
-          formatTouched = true;
-        } else if (arm.lightChainId === action.chainId) {
-          arms[armId] = { ...arm, lightChainId: null };
-          formatTouched = true;
-        }
+      const wellIds = state.selectedWells.length
+        ? state.selectedWells
+        : state.plate.map((w) => w.id);
+      const chosen = new Set(wellIds);
+      const plate = state.plate.map((w) => {
+        if (!chosen.has(w.id) || !w.chainIds.includes(action.chainId)) return w;
+        return {
+          ...w,
+          chainIds: w.chainIds.filter((id) => id !== action.chainId),
+          format: unbindChainFromFormat(w.format, action.chainId),
+        };
       });
+      const stillUsed = plate.some((w) => w.chainIds.includes(action.chainId));
+      const chains = { ...state.chains };
+      if (!stillUsed) delete chains[action.chainId];
 
+      const next = applyWellSelection(
+        { ...state, plate, chains },
+        state.selectedWells.length ? state.selectedWells : ['A1'],
+        primaryWellId(state) ?? 'A1',
+      );
       return {
-        ...state,
-        chains,
-        bench,
-        format: formatTouched
-          ? { ...state.format, arms, formatId: null, moleculeId: null }
-          : state.format,
-        selection: state.selection.filter((id) => id !== action.chainId),
-        lastSelectedId: state.lastSelectedId === action.chainId ? null : state.lastSelectedId,
-        focusChainId: nextFocus,
-        activeSlot: state.activeSlot?.chainId === action.chainId ? null : state.activeSlot,
-        galleryChainId: state.galleryChainId === action.chainId ? null : state.galleryChainId,
-        flashChainId: state.flashChainId === action.chainId ? null : state.flashChainId,
-        log: log(state, 'edit', `${chain.name} removed from the bench`),
+        ...next,
+        log: log(
+          state,
+          'edit',
+          stillUsed
+            ? `${chain.name} removed from the selected wells`
+            : `${chain.name} removed from the bench`,
+        ),
       };
     }
 
@@ -714,12 +821,12 @@ export function reducer(state: AppState, action: Action): AppState {
         formatId: null,
         moleculeId: null,
       };
-      return {
+      return syncPrimaryWell({
         ...state,
         chains,
         format,
         log: log(state, 'edit', `${def.label} placed on the ${action.arm} arm`),
-      };
+      });
     }
 
     case 'set-fc-bb': {
@@ -740,7 +847,7 @@ export function reducer(state: AppState, action: Action): AppState {
       };
       fill(state.format.arms.left.heavyChainId, parts.leftCh3);
       fill(state.format.arms.right.heavyChainId, parts.rightCh3);
-      return {
+      return syncPrimaryWell({
         ...state,
         chains,
         format: {
@@ -750,7 +857,7 @@ export function reducer(state: AppState, action: Action): AppState {
           moleculeId: null,
         },
         log: log(state, 'edit', `${bbDef(action.bb).label} placed on the Fc scaffold`),
-      };
+      });
     }
 
     case 'fuse-bb': {
@@ -765,7 +872,7 @@ export function reducer(state: AppState, action: Action): AppState {
           slots: relayoutSlots(chains[arm.heavyChainId].slots, layout.heavy),
         };
       }
-      return {
+      return syncPrimaryWell({
         ...state,
         chains,
         format: {
@@ -779,7 +886,7 @@ export function reducer(state: AppState, action: Action): AppState {
           'edit',
           `${bbDef(action.bb).label} fused onto the ${action.arm} arm`,
         ),
-      };
+      });
     }
 
     /**
@@ -858,21 +965,21 @@ export function reducer(state: AppState, action: Action): AppState {
             ? `common light chain: ${sharedName}`
             : `one light chain per arm${minted.length ? `, minting ${minted.join(', ')}` : ''}`;
 
-      return {
+      return syncPrimaryWell({
         ...state,
         counters,
         chains,
         bench,
         format: { ...state.format, arms, formatId: null, moleculeId: null },
         log: log(state, minted.length ? 'mint' : 'edit', `Light chain choice - ${detail}`),
-      };
+      });
     }
 
     case 'set-arm-light-chain': {
       const chain = state.chains[action.chainId];
       if (!chain || chain.kind !== 'light') return state;
       const arm: ArmDesign = { ...state.format.arms[action.arm], lightChainId: action.chainId };
-      return {
+      return syncPrimaryWell({
         ...state,
         format: {
           ...state.format,
@@ -881,7 +988,7 @@ export function reducer(state: AppState, action: Action): AppState {
           moleculeId: null,
         },
         log: log(state, 'edit', `${chain.name} paired with the ${action.arm} arm`),
-      };
+      });
     }
 
     case 'register-format': {
@@ -890,14 +997,14 @@ export function reducer(state: AppState, action: Action): AppState {
       const dimer = scaffoldFc(state.format, state.chains, state.registry);
       const verdict = symmetry(state.format, state.chains, state.registry);
       if (existing) {
-        return {
+        return syncPrimaryWell({
           ...state,
           format: { ...state.format, formatId: existing.id },
           log: log(state, 'mint', `${existing.id} reused - this format already exists`),
-        };
+        });
       }
       const [id, counters] = mintId(state.counters, 'FMT');
-      return {
+      return syncPrimaryWell({
         ...state,
         counters,
         registry: {
@@ -915,7 +1022,7 @@ export function reducer(state: AppState, action: Action): AppState {
         },
         format: { ...state.format, formatId: id },
         log: log(state, 'mint', `${id} registered - new format`),
-      };
+      });
     }
 
     /**
@@ -946,16 +1053,16 @@ export function reducer(state: AppState, action: Action): AppState {
         (m) => m.signature === signature,
       );
       if (existing) {
-        return {
+        return syncPrimaryWell({
           ...withFormat,
           format: { ...withFormat.format, moleculeId: existing.id },
           log: log(withFormat, 'mint', `${existing.id} reused: this molecule already exists`),
-        };
+        });
       }
 
       const [id, counters] = mintId(withFormat.counters, 'MOL');
       const name = moleculeName(withFormat.format, withFormat.chains, withFormat.registry);
-      return {
+      return syncPrimaryWell({
         ...withFormat,
         counters,
         registry: {
@@ -976,7 +1083,7 @@ export function reducer(state: AppState, action: Action): AppState {
         },
         format: { ...withFormat.format, moleculeId: id },
         log: log(withFormat, 'mint', `${id} registered: ${name}`),
-      };
+      });
     }
 
     case 'open-review':

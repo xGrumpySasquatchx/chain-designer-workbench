@@ -152,6 +152,22 @@ export interface BenchChain {
 export type BenchNode = BenchChain | BenchGroup;
 
 /**
+ * One well on the campaign plate. A molecule is the combination of chains in
+ * this well; the same chain id can appear in many wells (a shared Fc or common
+ * light chain), so bulk-selecting wells puts that chain on the bench once.
+ */
+export interface PlateWell {
+  /** Address on the plate, `A1` … `H12`. */
+  id: string;
+  row: number;
+  col: number;
+  /** Chains that comprise this well's molecule, in bench order. */
+  chainIds: string[];
+  /** Pad format for this well; edited when the well is the primary selection. */
+  format: FormatDesign;
+}
+
+/**
  * BioGlyph building blocks (docs.bioglyph.app — Design Pad). Shape encodes the
  * building block, color encodes the sequence/target it carries.
  */

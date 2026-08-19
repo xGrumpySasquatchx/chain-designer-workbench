@@ -775,11 +775,28 @@ body.resizing-v .panel-grip::after {
 
 .row-label {
   font-size: 12.5px;
-  width: 156px;
+  width: 168px;
   flex: none;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  min-width: 0;
+}
+
+.row-name {
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-size: 12.5px;
+  color: inherit;
+  width: 118px;
+  padding: 0;
+  min-width: 0;
+}
+
+.row-name:focus {
+  outline: none;
+  box-shadow: 0 1px 0 var(--border-accent);
 }
 
 .row-kind {
@@ -961,60 +978,57 @@ body.resizing-v .panel-grip::after {
   font-size: 11px;
 }
 
-/* ---------- cloning loop diagram ---------- */
+/* ---------- 96-well plate ---------- */
 
-.flow-header {
-  display: flex;
+.plate {
+  display: grid;
+  grid-template-columns: 16px repeat(12, minmax(0, 1fr));
+  gap: 4px;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
 }
 
-.flow-next {
-  margin-left: auto;
-  font-size: 11px;
-  color: var(--text-secondary);
+.plate-corner {
+  width: 16px;
+  height: 14px;
 }
 
-.flow-svg {
-  width: 100%;
-  display: block;
-}
-
-.flow-legend {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 10px;
+.plate-col-label,
+.plate-row-label {
+  font-size: 9px;
   color: var(--text-muted);
-  margin: 4px 0 0;
+  text-align: center;
+  line-height: 1;
 }
 
-.flow-key {
-  width: 10px;
-  height: 10px;
-  border-radius: 3px;
+.plate-row-label {
+  text-align: left;
+}
+
+.plate-well {
+  aspect-ratio: 1;
   border: 0.5px solid var(--border-strong);
-  display: inline-block;
+  border-radius: 999px;
+  padding: 0;
+  display: flex;
+  overflow: hidden;
+  background: var(--surface-1);
+  cursor: pointer;
+  min-width: 0;
 }
 
-.flow-key + .flow-key,
-.flow-legend .flow-key:not(:first-child) {
-  margin-left: 8px;
+.plate-well-half {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
 }
 
-.flow-key.active {
-  background: var(--bg-accent);
+.plate-well.selected {
+  box-shadow: 0 0 0 1.5px var(--border-accent);
   border-color: var(--border-accent);
 }
 
-.flow-key.done {
-  background: var(--surface-1);
-}
-
-.flow-key.skipped {
-  background: var(--surface-2);
-  opacity: 0.4;
+.plate-well.primary {
+  box-shadow: 0 0 0 2px var(--fill-accent);
 }
 
 /* ---------- design pad ---------- */

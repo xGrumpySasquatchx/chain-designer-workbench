@@ -61,15 +61,17 @@ export function ChainRow({ chainId, inGroup, onRowDragOver, onRowDrop, dropBefor
           data-tip={`A part is set at a finer resolution than “${RESOLUTION_LABELS[resolution]}”, so it is not shown on this row`}
         />
       )}
-      <span
-        className="row-label"
-        data-tip={
-          chain.note
-            ? `Note: ${chain.note}`
-            : `${chain.name} — ${chain.kind} chain. Click to focus it, shift-click for a range, cmd-click to toggle it.`
-        }
-      >
-        {chain.name}
+      <span className="row-label">
+        <input
+          className="row-name"
+          value={chain.name}
+          draggable={false}
+          data-tip="Chain name — defaults from the V region when one is placed, and is always editable"
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+          onChange={(e) => dispatch({ type: 'rename-chain', chainId, name: e.target.value })}
+          onDragStart={(e) => e.preventDefault()}
+        />
         <span className="row-kind"> · {chain.kind}</span>
       </span>
 

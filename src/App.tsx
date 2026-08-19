@@ -4,7 +4,7 @@ import { ActivityLog } from './components/ActivityLog';
 import { Bench } from './components/Bench';
 import { ConstructMap } from './components/ConstructMap';
 import { DesignPad } from './components/DesignPad';
-import { FlowDiagram } from './components/FlowDiagram';
+import { Plate } from './components/Plate';
 import { QcPanel } from './components/QcPanel';
 import { RegistryRail } from './components/RegistryRail';
 import { RegistryReview } from './components/RegistryReview';
@@ -159,7 +159,7 @@ export default function App() {
         />
 
         <div className="column col-bench">
-          <FlowDiagram />
+          <Plate />
           <WorklistStrip />
           <Bench />
         </div>

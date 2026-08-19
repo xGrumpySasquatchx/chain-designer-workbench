@@ -37,6 +37,7 @@ import {
   truncate,
 } from '../src/model/mapview';
 import { lightChainMode, moleculeReadiness } from '../src/model/molecule';
+import { uniqueChainIds, wellRange } from '../src/model/plate';
 import { inAlphabet, lengthIn } from '../src/model/parts';
 import { runFormatQc, runQc } from '../src/model/qc';
 import { createInitialState, reducer, type Action, type AppState } from '../src/state/store';
@@ -228,21 +229,57 @@ check(
   unbound.format.arms.left.bb === 'empty' && unbound.format.arms.left.heavyChainId === null,
 );
 check('focus moves to a chain that is still on the bench', !!unbound.chains[unbound.focusChainId]);
-draft = run(
-  createInitialState(),
-  { type: 'select', id: HEAVY, mode: 'single' },
-  { type: 'select', id: HEAVY_B, mode: 'toggle' },
-  { type: 'group-selected' },
-  { type: 'remove-chain', chainId: HEAVY },
+check(
+  'a shared row chain stays in the catalog when removed from one well',
+  !!unbound.chains[HEAVY] && !unbound.bench.some((n) => n.id === HEAVY),
+);
+
+console.log('\n— 96-well plate drives the bench —');
+const plate0 = createInitialState();
+check('the plate has 96 wells', plate0.plate.length === 96);
+check('A1 is selected and shows the original three chains', plate0.selectedWells[0] === 'A1' && plate0.bench.length === 3);
+const rowA = run(plate0, { type: 'select-wells', wellId: 'A12', mode: 'range' });
+check(
+  'shift-selecting A12 from A1 takes the whole row',
+  rowA.selectedWells.length === 12 && rowA.selectedWells[0] === 'A1' && rowA.selectedWells[11] === 'A12',
 );
 check(
-  'removing the last-but-one chain from a group leaves the rest grouped',
-  draft.bench.some((n) => n.kind === 'group' && n.children.length === 1 && n.children[0] === HEAVY_B),
+  'a row selection shows the shared heavy chain once',
+  rowA.bench.filter((n) => n.id === HEAVY).length === 1,
 );
-draft = run(draft, { type: 'remove-chain', chainId: HEAVY_B });
 check(
-  'removing the last grouped draft dissolves the empty group',
-  draft.bench.every((n) => n.kind === 'chain') && !draft.chains[HEAVY_B],
+  'a row selection unions the column partner chains',
+  uniqueChainIds(rowA.plate.filter((w) => rowA.selectedWells.includes(w.id))).length === 14,
+);
+const block = wellRange('A1', 'B2');
+check('a plate range is the rectangle between two wells', block.join(',') === 'A1,A2,B1,B2');
+const named = run(plate0, { type: 'rename-chain', chainId: HEAVY, name: 'HER2 heavy v2' });
+check('a chain name is editable', named.chains[HEAVY].name === 'HER2 heavy v2');
+const withVh = run(
+  plate0,
+  { type: 'select-component', chainId: HEAVY, slotIndex: plate0.chains[HEAVY].slots.findIndex((s) => s.type === 'vh') },
+  { type: 'place-block', chainId: HEAVY, slotIndex: plate0.chains[HEAVY].slots.findIndex((s) => s.type === 'vh'), blockId: 'BB-0010' },
+);
+const added = run(withVh, { type: 'add-chain', kind: 'heavy' });
+const addedId = added.bench[added.bench.length - 1].id;
+check(
+  'a new heavy chain takes its name from the selected V region',
+  added.chains[addedId].name === 'anti-HER2 heavy',
+  added.chains[addedId].name,
+);
+let namedNew = run(plate0, { type: 'add-chain', kind: 'heavy' });
+const newId = namedNew.bench[namedNew.bench.length - 1].id;
+const newVh = namedNew.chains[newId].slots.findIndex((s) => s.type === 'vh');
+namedNew = run(namedNew, {
+  type: 'place-block',
+  chainId: newId,
+  slotIndex: newVh,
+  blockId: 'BB-0013',
+});
+check(
+  'placing a V region on a New chain names it',
+  namedNew.chains[newId].name === 'anti-EGFR heavy',
+  namedNew.chains[newId].name,
 );
 
 console.log('\n— resolution is a view setting —');

@@ -317,15 +317,26 @@ export const INITIAL_COUNTERS: Counters = {
   VEC: 4,
   CC: 1,
   REG: 1,
-  CH: 3,
+  CH: 21,
   GRP: 0,
   FMT: 0,
   MOL: 0,
 };
 
+function heavyWithVh(id: string, name: string, vhId?: string): ChainDesign {
+  const chain = makeChain(id, name, 'heavy');
+  if (!vhId) return chain;
+  return {
+    ...chain,
+    slots: chain.slots.map((s) => (s.type === 'vh' ? { ...s, blockIds: [vhId] } : s)),
+  };
+}
+
 /**
- * Opening worklist: two arms to design, plus the universal light chain already
- * in inventory. Nothing pairs the arms to it — that is the designer's call.
+ * Opening plate: a shared light chain, eight row heavies and twelve column
+ * heavies. A1 keeps the original empty HER2 and CD3 arms so the session still
+ * opens on an unfinished bispecific; the other wells carry a VH so each
+ * molecule on the plate is already distinct.
  */
 export function initialChains(): ChainDesign[] {
   const light = makeChain('CH-0001', 'Universal light chain', 'light');
@@ -337,7 +348,52 @@ export function initialChains(): ChainDesign[] {
   light.constructIds = ['CC-0001'];
   light.regIds = ['REG-0001'];
 
-  return [light, makeChain('CH-0002', 'HER2 arm (heavy)', 'heavy'), makeChain('CH-0003', 'CD3 arm (heavy)', 'heavy')];
+  const rowHeavies = [
+    heavyWithVh('CH-0002', 'HER2 arm (heavy)'),
+    heavyWithVh('CH-0004', 'anti-EGFR heavy', 'BB-0013'),
+    heavyWithVh('CH-0005', 'anti-CD20 heavy', 'BB-0014'),
+    heavyWithVh('CH-0006', 'anti-HER2 (2C4) heavy', 'BB-0011'),
+    heavyWithVh('CH-0007', 'anti-CD3 heavy', 'BB-0012'),
+    heavyWithVh('CH-0008', 'anti-HER2 heavy', 'BB-0010'),
+    heavyWithVh('CH-0009', 'anti-EGFR heavy', 'BB-0013'),
+    heavyWithVh('CH-0010', 'anti-CD20 heavy', 'BB-0014'),
+  ];
+
+  const colVhs = [
+    'BB-0012',
+    'BB-0010',
+    'BB-0011',
+    'BB-0013',
+    'BB-0014',
+    'BB-0012',
+    'BB-0010',
+    'BB-0011',
+    'BB-0013',
+    'BB-0014',
+    'BB-0012',
+  ];
+  const colNames = [
+    'CD3 arm (heavy)',
+    'anti-HER2 heavy',
+    'anti-HER2 (2C4) heavy',
+    'anti-EGFR heavy',
+    'anti-CD20 heavy',
+    'anti-CD3 heavy',
+    'anti-HER2 heavy',
+    'anti-HER2 (2C4) heavy',
+    'anti-EGFR heavy',
+    'anti-CD20 heavy',
+    'anti-CD3 heavy',
+    'anti-HER2 heavy',
+  ];
+  const colHeavies = [
+    heavyWithVh('CH-0003', colNames[0]),
+    ...colVhs.map((vh, i) =>
+      heavyWithVh(`CH-${String(11 + i).padStart(4, '0')}`, colNames[i + 1], vh),
+    ),
+  ];
+
+  return [light, ...rowHeavies, ...colHeavies];
 }
 
 /**
