@@ -159,6 +159,8 @@ export type BenchNode = BenchChain | BenchGroup;
 export interface PlateWell {
   /** Address on the plate, `A1` … `H12`. */
   id: string;
+  /** Luma molecule UID for the contents of this well. */
+  lumaUid: string;
   row: number;
   col: number;
   /** Chains that comprise this well's molecule, in bench order. */

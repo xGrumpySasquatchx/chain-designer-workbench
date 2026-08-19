@@ -1,5 +1,6 @@
 import { chainTarget } from './bioglyph';
 import { NEUTRAL, TARGET_SLOTS } from './dpad';
+import { COLORS, TARGET_COLORS } from './parts';
 import type {
   ArmId,
   BenchNode,
@@ -14,6 +15,11 @@ export const PLATE_COLS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] as const;
 
 export function wellId(row: number, col: number): string {
   return `${PLATE_ROWS[row]}${PLATE_COLS[col]}`;
+}
+
+/** Stable Luma molecule UID for a well until a real import lands. */
+export function lumaUid(row: number, col: number): string {
+  return `LUM-${String(row * 12 + col + 1).padStart(4, '0')}`;
 }
 
 export function parseWellId(id: string): { row: number; col: number } | null {
@@ -76,6 +82,7 @@ export function initialPlate(): PlateWell[] {
       const right = PLATE_COL_CHAINS[col];
       wells.push({
         id: wellId(row, col),
+        lumaUid: lumaUid(row, col),
         row,
         col,
         chainIds: [PLATE_LIGHT, left, right],
@@ -166,21 +173,42 @@ export function wellCaption(
     .join(' · ');
 }
 
-export function wellColors(
+const COMPONENT_FALLBACK = [
+  ...TARGET_SLOTS.map((slot) => slot.base),
+  COLORS.payload,
+  COLORS.linker,
+  COLORS.tag,
+  COLORS.ch2,
+];
+
+/** Default plate colour for a molecule element, before any user override. */
+export function defaultComponentColor(
+  chain: ChainDesign | undefined,
+  registry: Registry,
+): string {
+  if (!chain) return NEUTRAL.base;
+  if (chain.kind === 'light') return COLORS.vl;
+  const target = chainTarget(chain, registry);
+  if (target && TARGET_COLORS[target]) return TARGET_COLORS[target];
+  const n = Number(chain.id.replace(/\D/g, '')) || 0;
+  return COMPONENT_FALLBACK[n % COMPONENT_FALLBACK.length];
+}
+
+export function componentColor(
+  chainId: string,
+  chains: Record<string, ChainDesign>,
+  registry: Registry,
+  overrides: Record<string, string>,
+): string {
+  return overrides[chainId] ?? defaultComponentColor(chains[chainId], registry);
+}
+
+/** One colour per chain in the well, in molecule-element order. */
+export function wellElementColors(
   well: PlateWell,
   chains: Record<string, ChainDesign>,
   registry: Registry,
-): { left: string; right: string } {
-  const targets: string[] = [];
-  const claim = (id: string) => {
-    const target = chainTarget(chains[id], registry);
-    if (target && !targets.includes(target)) targets.push(target);
-  };
-  well.chainIds.forEach(claim);
-  const color = (index: number | undefined) =>
-    index === undefined ? NEUTRAL.base : TARGET_SLOTS[index % TARGET_SLOTS.length].base;
-  return {
-    left: color(targets[0] !== undefined ? 0 : undefined),
-    right: color(targets[1] !== undefined ? 1 : targets[0] !== undefined ? 0 : undefined),
-  };
+  overrides: Record<string, string>,
+): string[] {
+  return well.chainIds.map((id) => componentColor(id, chains, registry, overrides));
 }

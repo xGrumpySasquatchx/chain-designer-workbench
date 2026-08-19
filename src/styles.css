@@ -616,32 +616,82 @@ body.resizing-v .panel-grip::after {
 
 .worklist {
   display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  padding-bottom: 2px;
+  flex-direction: column;
+  gap: 4px;
 }
 
-.wl-card {
+.wl-row {
+  display: grid;
+  grid-template-columns: 28px 78px minmax(0, 1fr) minmax(0, 110px);
+  gap: 8px;
+  align-items: center;
   border: 0.5px solid var(--border);
   border-radius: var(--radius);
-  padding: 7px 9px;
+  padding: 6px 8px;
   background: var(--surface-2);
   cursor: pointer;
-  min-width: 152px;
   text-align: left;
-  flex: none;
 }
 
-.wl-card.focused {
+.wl-row.primary {
   border-color: var(--border-accent);
   background: var(--bg-accent);
 }
 
-.wl-name {
+.wl-well {
   font-size: 12px;
-  font-weight: 500;
-  display: block;
-  margin-bottom: 3px;
+  font-weight: 600;
+}
+
+.wl-uid {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px;
+  color: var(--text-secondary);
+}
+
+.wl-elements {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+
+.wl-element {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 0.5px solid transparent;
+  border-radius: 999px;
+  padding: 2px 7px;
+  font-size: 10.5px;
+  line-height: 1.2;
+  cursor: pointer;
+  max-width: 100%;
+}
+
+.wl-element.focused {
+  box-shadow: 0 0 0 1.5px var(--fill-accent);
+}
+
+.wl-element-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 140px;
+}
+
+.wl-element-id {
+  opacity: 0.8;
+  font-size: 9.5px;
+}
+
+.wl-caption {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  justify-self: end;
 }
 
 .badge {
@@ -980,21 +1030,51 @@ body.resizing-v .panel-grip::after {
 
 /* ---------- 96-well plate ---------- */
 
+.plate-trailing {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.plate-tool {
+  border: 0.5px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1;
+  padding: 2px 6px;
+  cursor: pointer;
+}
+
+.plate-tool:hover,
+.plate-tool.on {
+  border-color: var(--border-accent);
+  color: var(--text);
+  background: var(--bg-accent);
+}
+
+.plate-viewport {
+  overflow: auto;
+  max-width: 100%;
+}
+
 .plate {
   display: grid;
-  grid-template-columns: 16px repeat(12, minmax(0, 1fr));
-  gap: 4px;
+  grid-template-columns: 14px repeat(12, var(--well-size, 12px));
+  gap: max(2px, calc(var(--well-size, 12px) * 0.12));
   align-items: center;
+  width: max-content;
 }
 
 .plate-corner {
-  width: 16px;
-  height: 14px;
+  width: 14px;
+  height: 10px;
 }
 
 .plate-col-label,
 .plate-row-label {
-  font-size: 9px;
+  font-size: 8px;
   color: var(--text-muted);
   text-align: center;
   line-height: 1;
@@ -1005,7 +1085,8 @@ body.resizing-v .panel-grip::after {
 }
 
 .plate-well {
-  aspect-ratio: 1;
+  width: var(--well-size, 12px);
+  height: var(--well-size, 12px);
   border: 0.5px solid var(--border-strong);
   border-radius: 999px;
   padding: 0;
@@ -1013,10 +1094,9 @@ body.resizing-v .panel-grip::after {
   overflow: hidden;
   background: var(--surface-1);
   cursor: pointer;
-  min-width: 0;
 }
 
-.plate-well-half {
+.plate-well-slice {
   flex: 1;
   min-width: 0;
   height: 100%;
@@ -1029,6 +1109,67 @@ body.resizing-v .panel-grip::after {
 
 .plate-well.primary {
   box-shadow: 0 0 0 2px var(--fill-accent);
+}
+
+.plate-legend {
+  margin-top: 8px;
+  border-top: 0.5px solid var(--border);
+  padding-top: 8px;
+}
+
+.plate-legend-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.plate-legend-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  font-size: 11px;
+}
+
+.plate-legend-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+}
+
+.plate-swatch {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  position: relative;
+}
+
+.plate-swatch input[type='color'] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.plate-swatch-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  border: 0.5px solid var(--border-strong);
+  flex: none;
+}
+
+.plate-swatch-name {
+  font-size: 11px;
+  color: var(--text-secondary);
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ---------- design pad ---------- */

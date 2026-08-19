@@ -37,7 +37,7 @@ import {
   truncate,
 } from '../src/model/mapview';
 import { lightChainMode, moleculeReadiness } from '../src/model/molecule';
-import { uniqueChainIds, wellRange } from '../src/model/plate';
+import { uniqueChainIds, wellRange, lumaUid, wellElementColors, componentColor } from '../src/model/plate';
 import { inAlphabet, lengthIn } from '../src/model/parts';
 import { runFormatQc, runQc } from '../src/model/qc';
 import { createInitialState, reducer, type Action, type AppState } from '../src/state/store';
@@ -238,6 +238,25 @@ console.log('\n— 96-well plate drives the bench —');
 const plate0 = createInitialState();
 check('the plate has 96 wells', plate0.plate.length === 96);
 check('A1 is selected and shows the original three chains', plate0.selectedWells[0] === 'A1' && plate0.bench.length === 3);
+check(
+  'every well arrives from Luma with a unique UID',
+  plate0.plate[0].lumaUid === 'LUM-0001' &&
+    plate0.plate[95].lumaUid === lumaUid(7, 11) &&
+    new Set(plate0.plate.map((w) => w.lumaUid)).size === 96,
+);
+check(
+  'a well is coloured by its molecule elements',
+  wellElementColors(plate0.plate[0], plate0.chains, plate0.registry, plate0.wellComponentColors)
+    .length === plate0.plate[0].chainIds.length,
+);
+const recolored = run(plate0, { type: 'set-well-color', chainId: LIGHT, color: '#00aa88' });
+check(
+  'a component colour can be customized',
+  componentColor(LIGHT, recolored.chains, recolored.registry, recolored.wellComponentColors) ===
+    '#00aa88',
+);
+const restored = run(recolored, { type: 'reset-well-colors' });
+check('resetting plate colours drops the override', !restored.wellComponentColors[LIGHT]);
 const rowA = run(plate0, { type: 'select-wells', wellId: 'A12', mode: 'range' });
 check(
   'shift-selecting A12 from A1 takes the whole row',

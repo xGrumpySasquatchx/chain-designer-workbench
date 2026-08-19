@@ -76,6 +76,8 @@ export interface AppState {
   plate: PlateWell[];
   selectedWells: string[];
   lastSelectedWellId: string | null;
+  /** User overrides for how molecule elements colour on the plate. */
+  wellComponentColors: Record<string, string>;
   /** Geneious-style view mode; multiple selected constructs force linear. */
   constructView: 'circular' | 'linear';
   /** Pad glyphs colored by target (BioGlyph) or by part category (spec 8a). */
@@ -105,6 +107,8 @@ export type Action =
   | { type: 'remove-chain'; chainId: string }
   | { type: 'rename-chain'; chainId: string; name: string }
   | { type: 'select-wells'; wellId: string; mode: 'single' | 'toggle' | 'range' }
+  | { type: 'set-well-color'; chainId: string; color: string }
+  | { type: 'reset-well-colors' }
   | { type: 'select'; id: string; mode: 'single' | 'toggle' | 'range' }
   | { type: 'clear-selection' }
   | { type: 'group-selected' }
@@ -155,6 +159,7 @@ export function createInitialState(): AppState {
     plate,
     selectedWells: ['A1'],
     lastSelectedWellId: 'A1',
+    wellComponentColors: {},
     bench: benchFromChainIds(plate[0].chainIds),
     selection: [],
     lastSelectedId: null,
@@ -570,6 +575,18 @@ export function reducer(state: AppState, action: Action): AppState {
       if (!chain || chain.name === action.name) return state;
       return withChain(state, action.chainId, (c) => ({ ...c, name: action.name }));
     }
+
+    case 'set-well-color': {
+      if (state.wellComponentColors[action.chainId] === action.color) return state;
+      return {
+        ...state,
+        wellComponentColors: { ...state.wellComponentColors, [action.chainId]: action.color },
+      };
+    }
+
+    case 'reset-well-colors':
+      if (!Object.keys(state.wellComponentColors).length) return state;
+      return { ...state, wellComponentColors: {} };
 
     case 'select-wells': {
       let wellIds: string[];
