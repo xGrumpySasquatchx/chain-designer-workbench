@@ -1055,9 +1055,18 @@ body.resizing-v .panel-grip::after {
   background: var(--bg-accent);
 }
 
+.plate-stage {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+  width: 100%;
+}
+
 .plate-viewport {
   overflow: auto;
-  max-width: 100%;
+  min-width: 0;
+  flex: 1;
 }
 
 .plate {
@@ -1106,7 +1115,9 @@ body.resizing-v .panel-grip::after {
 }
 
 .plate-toolbar {
-  margin-bottom: 8px;
+  flex: none;
+  margin: 0;
+  padding-top: 12px;
 }
 
 .palette-select {

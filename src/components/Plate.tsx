@@ -11,8 +11,8 @@ import {
 } from '../model/plate';
 import { useApp, useDispatch } from '../state/store';
 
-const MIN_WELL = 10;
-const MAX_WELL = 42;
+const MIN_WELL = 14;
+const MAX_WELL = 60;
 const DEFAULT_WELL = 18;
 
 function clampWell(size: number) {
@@ -94,35 +94,37 @@ export function Plate() {
       }
       defaultHeight={228}
     >
-      <div className="plate-toolbar">
-        <PaletteSelect
-          value={state.wellPaletteId}
-          onChange={(paletteId) => dispatch({ type: 'set-well-palette', paletteId })}
-        />
-      </div>
-      <div
-        ref={viewportRef}
-        className="plate-viewport"
-        style={{ '--well-size': `${wellSize}px` } as CSSProperties}
-      >
-        <div className="plate">
-          <div className="plate-corner" />
-          {PLATE_COLS.map((col) => (
-            <div key={col} className="plate-col-label">
-              {col}
-            </div>
-          ))}
-          {PLATE_ROWS.map((row, ri) => (
-            <Row
-              key={row}
-              row={row}
-              rowIndex={ri}
-              selected={selected}
-              primary={primary}
-              chainOrder={chainOrder}
-              onWellClick={onWellClick}
-            />
-          ))}
+      <div className="plate-stage">
+        <div
+          ref={viewportRef}
+          className="plate-viewport"
+          style={{ '--well-size': `${wellSize}px` } as CSSProperties}
+        >
+          <div className="plate">
+            <div className="plate-corner" />
+            {PLATE_COLS.map((col) => (
+              <div key={col} className="plate-col-label">
+                {col}
+              </div>
+            ))}
+            {PLATE_ROWS.map((row, ri) => (
+              <Row
+                key={row}
+                row={row}
+                rowIndex={ri}
+                selected={selected}
+                primary={primary}
+                chainOrder={chainOrder}
+                onWellClick={onWellClick}
+              />
+            ))}
+          </div>
+        </div>
+        <div className="plate-toolbar">
+          <PaletteSelect
+            value={state.wellPaletteId}
+            onChange={(paletteId) => dispatch({ type: 'set-well-palette', paletteId })}
+          />
         </div>
       </div>
     </Panel>
