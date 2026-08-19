@@ -38,6 +38,7 @@ import {
 } from '../src/model/mapview';
 import { lightChainMode, moleculeReadiness } from '../src/model/molecule';
 import { uniqueChainIds, wellRange, lumaUid, wellElementColors, componentColor } from '../src/model/plate';
+import { DEFAULT_PALETTE_ID, PLATE_PALETTES, wellPieBackground } from '../src/model/palettes';
 import { inAlphabet, lengthIn } from '../src/model/parts';
 import { runFormatQc, runQc } from '../src/model/qc';
 import { createInitialState, reducer, type Action, type AppState } from '../src/state/store';
@@ -246,8 +247,33 @@ check(
 );
 check(
   'a well is coloured by its molecule elements',
-  wellElementColors(plate0.plate[0], plate0.chains, plate0.registry, plate0.wellComponentColors)
-    .length === plate0.plate[0].chainIds.length,
+  wellElementColors(
+    plate0.plate[0],
+    plate0.chains,
+    plate0.registry,
+    plate0.wellComponentColors,
+    plate0.wellPaletteId,
+    uniqueChainIds(plate0.plate),
+  ).length === plate0.plate[0].chainIds.length,
+);
+check('the default well palette is the high-contrast row', plate0.wellPaletteId === DEFAULT_PALETTE_ID);
+check(
+  'well pies start at twelve o\'clock',
+  wellPieBackground(['#111111', '#222222', '#333333']).startsWith('conic-gradient(from -90deg'),
+);
+check('six palettes are offered for the plate', PLATE_PALETTES.length === 6);
+const paletted = run(plate0, { type: 'set-well-palette', paletteId: 'classic' });
+check(
+  'choosing a palette recolors wells in plate order',
+  paletted.wellPaletteId === 'classic' &&
+    wellElementColors(
+      paletted.plate[0],
+      paletted.chains,
+      paletted.registry,
+      paletted.wellComponentColors,
+      paletted.wellPaletteId,
+      uniqueChainIds(paletted.plate),
+    )[0] === PLATE_PALETTES[0].colors[0],
 );
 const recolored = run(plate0, { type: 'set-well-color', chainId: LIGHT, color: '#00aa88' });
 check(

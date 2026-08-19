@@ -1,5 +1,6 @@
 import { chainTarget } from './bioglyph';
 import { NEUTRAL, TARGET_SLOTS } from './dpad';
+import { paletteById } from './palettes';
 import { COLORS, TARGET_COLORS } from './parts';
 import type {
   ArmId,
@@ -199,8 +200,16 @@ export function componentColor(
   chains: Record<string, ChainDesign>,
   registry: Registry,
   overrides: Record<string, string>,
+  paletteId?: string,
+  order: string[] = [],
 ): string {
-  return overrides[chainId] ?? defaultComponentColor(chains[chainId], registry);
+  if (overrides[chainId]) return overrides[chainId];
+  if (paletteId && order.length) {
+    const palette = paletteById(paletteId);
+    const index = order.indexOf(chainId);
+    if (index >= 0) return palette.colors[index % palette.colors.length];
+  }
+  return defaultComponentColor(chains[chainId], registry);
 }
 
 /** One colour per chain in the well, in molecule-element order. */
@@ -209,6 +218,10 @@ export function wellElementColors(
   chains: Record<string, ChainDesign>,
   registry: Registry,
   overrides: Record<string, string>,
+  paletteId?: string,
+  order: string[] = [],
 ): string[] {
-  return well.chainIds.map((id) => componentColor(id, chains, registry, overrides));
+  return well.chainIds.map((id) =>
+    componentColor(id, chains, registry, overrides, paletteId, order),
+  );
 }

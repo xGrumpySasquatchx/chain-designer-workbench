@@ -29,6 +29,7 @@ import {
   wellRange,
 } from '../model/plate';
 import { runQc } from '../model/qc';
+import { DEFAULT_PALETTE_ID, paletteById } from '../model/palettes';
 import type {
   Alphabet,
   ArmDesign,
@@ -78,6 +79,8 @@ export interface AppState {
   lastSelectedWellId: string | null;
   /** User overrides for how molecule elements colour on the plate. */
   wellComponentColors: Record<string, string>;
+  /** Preset palette assigned to well components, in plate order. */
+  wellPaletteId: string;
   /** Geneious-style view mode; multiple selected constructs force linear. */
   constructView: 'circular' | 'linear';
   /** Pad glyphs colored by target (BioGlyph) or by part category (spec 8a). */
@@ -109,6 +112,7 @@ export type Action =
   | { type: 'select-wells'; wellId: string; mode: 'single' | 'toggle' | 'range' }
   | { type: 'set-well-color'; chainId: string; color: string }
   | { type: 'reset-well-colors' }
+  | { type: 'set-well-palette'; paletteId: string }
   | { type: 'select'; id: string; mode: 'single' | 'toggle' | 'range' }
   | { type: 'clear-selection' }
   | { type: 'group-selected' }
@@ -160,6 +164,7 @@ export function createInitialState(): AppState {
     selectedWells: ['A1'],
     lastSelectedWellId: 'A1',
     wellComponentColors: {},
+    wellPaletteId: DEFAULT_PALETTE_ID,
     bench: benchFromChainIds(plate[0].chainIds),
     selection: [],
     lastSelectedId: null,
@@ -585,8 +590,15 @@ export function reducer(state: AppState, action: Action): AppState {
     }
 
     case 'reset-well-colors':
-      if (!Object.keys(state.wellComponentColors).length) return state;
-      return { ...state, wellComponentColors: {} };
+      if (!Object.keys(state.wellComponentColors).length && state.wellPaletteId === DEFAULT_PALETTE_ID)
+        return state;
+      return { ...state, wellComponentColors: {}, wellPaletteId: DEFAULT_PALETTE_ID };
+
+    case 'set-well-palette': {
+      const palette = paletteById(action.paletteId);
+      if (state.wellPaletteId === palette.id) return state;
+      return { ...state, wellPaletteId: palette.id, wellComponentColors: {} };
+    }
 
     case 'select-wells': {
       let wellIds: string[];

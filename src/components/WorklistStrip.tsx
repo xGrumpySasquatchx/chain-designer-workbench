@@ -1,7 +1,7 @@
 import { Panel } from './Panel';
 import { flowState } from '../model/flow';
 import { variantCount } from '../model/combinatorics';
-import { componentColor, wellCaption } from '../model/plate';
+import { componentColor, uniqueChainIds, wellCaption } from '../model/plate';
 import { textOn } from '../model/mapview';
 import { useApp, useDispatch } from '../state/store';
 import type { PlateWell } from '../model/types';
@@ -14,6 +14,7 @@ export function WorklistStrip() {
     .filter((w): w is PlateWell => !!w);
   const primary = state.lastSelectedWellId;
   const registered = wells.filter((w) => w.format.moleculeId).length;
+  const chainOrder = uniqueChainIds(state.plate);
 
   return (
     <Panel
@@ -46,6 +47,8 @@ export function WorklistStrip() {
                     state.chains,
                     state.registry,
                     state.wellComponentColors,
+                    state.wellPaletteId,
+                    chainOrder,
                   );
                   const focused = state.focusChainId === id;
                   return (
