@@ -1034,7 +1034,33 @@ body.resizing-v .panel-grip::after {
 .plate-trailing {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
+}
+
+.plate-zoom {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.plate-zoom-pct {
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  min-width: 3.2em;
+  padding: 2px 4px;
+  cursor: pointer;
+}
+
+.plate-zoom-pct:hover {
+  color: var(--text);
+}
+
+.plate-tool:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 .plate-tool {

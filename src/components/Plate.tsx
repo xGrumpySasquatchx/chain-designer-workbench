@@ -19,6 +19,13 @@ function clampWell(size: number) {
   return Math.max(MIN_WELL, Math.min(MAX_WELL, Math.round(size)));
 }
 
+function zoomPercent(size: number) {
+  return Math.round((size / DEFAULT_WELL) * 100);
+}
+
+const MIN_ZOOM_PCT = zoomPercent(MIN_WELL);
+const MAX_ZOOM_PCT = zoomPercent(MAX_WELL);
+
 export function Plate() {
   const state = useApp();
   const dispatch = useDispatch();
@@ -33,7 +40,11 @@ export function Plate() {
     const onWheel = (e: WheelEvent) => {
       if (!e.ctrlKey && !e.metaKey) return;
       e.preventDefault();
-      setWellSize((size) => clampWell(size * (e.deltaY < 0 ? 1.12 : 1 / 1.12)));
+      setWellSize((size) => {
+        const current = zoomPercent(size);
+        const next = current + (e.deltaY < 0 ? 10 : -10);
+        return clampWell((next / 100) * DEFAULT_WELL);
+      });
     };
     node.addEventListener('wheel', onWheel, { passive: false });
     return () => node.removeEventListener('wheel', onWheel);
@@ -51,6 +62,13 @@ export function Plate() {
     const gap = Math.max(2, wellSize * 0.12);
     setWellSize(clampWell((width - label - 11 * gap) / 12));
   }
+
+  function setZoomPct(next: number) {
+    const clamped = Math.max(MIN_ZOOM_PCT, Math.min(MAX_ZOOM_PCT, Math.round(next)));
+    setWellSize(clampWell((clamped / 100) * DEFAULT_WELL));
+  }
+
+  const pct = zoomPercent(wellSize);
 
   const wells = state.selectedWells
     .map((id) => state.plate.find((w) => w.id === id))
@@ -71,22 +89,34 @@ export function Plate() {
       trailing={
         <span className="plate-trailing">
           <span>{trailing}</span>
-          <button
-            type="button"
-            className="plate-tool"
-            data-tip="Zoom in"
-            onClick={() => setWellSize((s) => clampWell(s * 1.2))}
-          >
-            +
-          </button>
-          <button
-            type="button"
-            className="plate-tool"
-            data-tip="Zoom out"
-            onClick={() => setWellSize((s) => clampWell(s / 1.2))}
-          >
-            −
-          </button>
+          <span className="plate-zoom" role="group" aria-label="Plate zoom">
+            <button
+              type="button"
+              className="plate-tool"
+              data-tip={`Zoom out (${MIN_ZOOM_PCT}–${MAX_ZOOM_PCT}%)`}
+              disabled={pct <= MIN_ZOOM_PCT}
+              onClick={() => setZoomPct(pct - 10)}
+            >
+              −
+            </button>
+            <button
+              type="button"
+              className="plate-zoom-pct"
+              data-tip="Reset zoom to 100%"
+              onClick={() => setZoomPct(100)}
+            >
+              {pct}%
+            </button>
+            <button
+              type="button"
+              className="plate-tool"
+              data-tip={`Zoom in (${MIN_ZOOM_PCT}–${MAX_ZOOM_PCT}%)`}
+              disabled={pct >= MAX_ZOOM_PCT}
+              onClick={() => setZoomPct(pct + 10)}
+            >
+              +
+            </button>
+          </span>
           <button type="button" className="plate-tool" data-tip="Fit the plate to the column" onClick={fitWidth}>
             ⤢
           </button>
