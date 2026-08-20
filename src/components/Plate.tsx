@@ -80,15 +80,22 @@ export function Plate() {
       : selected.size === 1
         ? `${primary} · ${uniqueChains.length} chains`
         : `${selected.size} wells · ${uniqueChains.length} unique chains`;
+  const current = state.plateQueue.find((p) => p.id === state.activePlateId);
   const chainOrder = uniqueChainIds(state.plate);
 
   return (
     <Panel
-      title="96-well plate"
-      tip="Each well is a Luma molecule drawn as a pie of its chain elements. Click to load its chains on the bench; shift-click a rectangle or cmd-click to add wells. Scroll with ctrl to zoom."
+      title={current?.name ?? '96-well plate'}
+      tip={
+        current
+          ? `${current.id} · ${current.barcode}. Each well is a Luma molecule drawn as a pie of its chain elements. Click to load its chains on the bench; shift-click a rectangle or cmd-click to add wells. Scroll with ctrl to zoom.`
+          : 'Each well is a Luma molecule drawn as a pie of its chain elements. Click to load its chains on the bench; shift-click a rectangle or cmd-click to add wells. Scroll with ctrl to zoom.'
+      }
       trailing={
         <span className="plate-trailing">
-          <span>{trailing}</span>
+          <span data-tip={current ? `${current.barcode} · ${current.formatLabel}` : undefined}>
+            {current ? `${current.id} · ${trailing}` : trailing}
+          </span>
           <span className="plate-zoom" role="group" aria-label="Plate zoom">
             <button
               type="button"

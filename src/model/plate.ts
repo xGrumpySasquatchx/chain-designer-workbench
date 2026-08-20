@@ -19,8 +19,20 @@ export function wellId(row: number, col: number): string {
 }
 
 /** Stable Luma molecule UID for a well until a real import lands. */
-export function lumaUid(row: number, col: number): string {
-  return `LUM-${String(row * 12 + col + 1).padStart(4, '0')}`;
+export function lumaUid(row: number, col: number, series = 0): string {
+  return `LUM-${String(series * 96 + row * 12 + col + 1).padStart(4, '0')}`;
+}
+
+export function emptyWellFormat(): FormatDesign {
+  return {
+    arms: {
+      left: { id: 'left', bb: 'empty', heavyChainId: null, lightChainId: null, fused: [] },
+      right: { id: 'right', bb: 'empty', heavyChainId: null, lightChainId: null, fused: [] },
+    },
+    fc: 'none',
+    formatId: null,
+    moleculeId: null,
+  };
 }
 
 export function parseWellId(id: string): { row: number; col: number } | null {
@@ -75,23 +87,34 @@ export const PLATE_COL_CHAINS = [
   'CH-0021',
 ] as const;
 
-export function initialPlate(): PlateWell[] {
+export function makePlateWells(series = 0, filledCount = 96): PlateWell[] {
   const wells: PlateWell[] = [];
+  let n = 0;
   for (let row = 0; row < 8; row++) {
     for (let col = 0; col < 12; col++) {
+      const filled = n < filledCount;
       const left = PLATE_ROW_CHAINS[row];
       const right = PLATE_COL_CHAINS[col];
       wells.push({
         id: wellId(row, col),
-        lumaUid: lumaUid(row, col),
+        lumaUid: lumaUid(row, col, series),
         row,
         col,
-        chainIds: [PLATE_LIGHT, left, right],
-        format: wellFormat(left, right),
+        chainIds: filled ? [PLATE_LIGHT, left, right] : [],
+        format: filled ? wellFormat(left, right) : emptyWellFormat(),
       });
+      n++;
     }
   }
   return wells;
+}
+
+export function wellsFilled(wells: PlateWell[]): number {
+  return wells.filter((w) => w.chainIds.length > 0).length;
+}
+
+export function initialPlate(): PlateWell[] {
+  return makePlateWells(0, 96);
 }
 
 export function uniqueChainIds(wells: PlateWell[]): string[] {

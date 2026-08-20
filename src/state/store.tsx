@@ -21,13 +21,14 @@ import {
 } from '../model/molecule';
 import {
   benchFromChainIds,
-  initialPlate,
   isDefaultChainName,
   nameFromVRegion,
   unbindChainFromFormat,
   uniqueChainIds,
   wellRange,
+  wellsFilled,
 } from '../model/plate';
+import { initialPlateQueue } from '../model/queue';
 import { runQc } from '../model/qc';
 import { DEFAULT_PALETTE_ID, paletteById } from '../model/palettes';
 import type {
@@ -44,6 +45,7 @@ import type {
   Insert,
   PartType,
   PlateWell,
+  QueuedPlate,
   Registry,
   Resolution,
 } from '../model/types';
@@ -73,8 +75,11 @@ export interface AppState {
   alphabet: Alphabet;
   /** The molecule under design on the pad. */
   format: FormatDesign;
-  /** 96-well campaign plate; each well is a molecule made of shared chains. */
+  /** 96-well campaign plate currently on the bench. */
   plate: PlateWell[];
+  /** Today's plates, shown as rows above the parts registry. */
+  plateQueue: QueuedPlate[];
+  activePlateId: string;
   selectedWells: string[];
   lastSelectedWellId: string | null;
   /** User overrides for how molecule elements colour on the plate. */
@@ -110,6 +115,7 @@ export type Action =
   | { type: 'remove-chain'; chainId: string }
   | { type: 'rename-chain'; chainId: string; name: string }
   | { type: 'select-wells'; wellId: string; mode: 'single' | 'toggle' | 'range' }
+  | { type: 'open-queue-plate'; plateId: string }
   | { type: 'set-well-color'; chainId: string; color: string }
   | { type: 'reset-well-colors' }
   | { type: 'set-well-palette'; paletteId: string }
@@ -155,12 +161,16 @@ export type Action =
 
 export function createInitialState(): AppState {
   const chains = initialChains();
-  const plate = initialPlate();
+  const plateQueue = initialPlateQueue();
+  const active = plateQueue.find((p) => p.status === 'active') ?? plateQueue[0];
+  const plate = active.wells;
   return {
     registry: initialRegistry(),
     counters: INITIAL_COUNTERS,
     chains: Object.fromEntries(chains.map((c) => [c.id, c])),
     plate,
+    plateQueue,
+    activePlateId: active.id,
     selectedWells: ['A1'],
     lastSelectedWellId: 'A1',
     wellComponentColors: {},
@@ -275,6 +285,43 @@ function syncPrimaryWell(state: AppState): AppState {
     ...state,
     plate: state.plate.map((w) => (w.id === id ? { ...w, format: state.format } : w)),
   };
+}
+
+function persistActivePlate(state: AppState): AppState {
+  return {
+    ...state,
+    plateQueue: state.plateQueue.map((p) =>
+      p.id === state.activePlateId ? { ...p, wells: state.plate } : p,
+    ),
+  };
+}
+
+function openQueuePlate(state: AppState, plateId: string): AppState {
+  if (plateId === state.activePlateId) return state;
+  const saved = persistActivePlate(state);
+  const next = saved.plateQueue.find((p) => p.id === plateId);
+  if (!next) return saved;
+  const plateQueue = saved.plateQueue.map((p) => {
+    if (p.id === saved.activePlateId && p.status === 'active') return { ...p, status: 'in-progress' as const };
+    if (p.id === plateId) return { ...p, status: p.status === 'done' ? p.status : ('active' as const) };
+    return p;
+  });
+  const firstFilled = next.wells.find((w) => w.chainIds.length > 0)?.id ?? next.wells[0]?.id ?? 'A1';
+  return applyWellSelection(
+    {
+      ...saved,
+      plateQueue,
+      activePlateId: plateId,
+      plate: next.wells,
+      log: log(
+        saved,
+        'edit',
+        `Opened ${next.id} (${next.barcode}) — ${wellsFilled(next.wells)} of ${next.wellCount} wells`,
+      ),
+    },
+    [firstFilled],
+    firstFilled,
+  );
 }
 
 function attachChainToWells(plate: PlateWell[], wellIds: string[], chainId: string): PlateWell[] {
@@ -599,6 +646,9 @@ export function reducer(state: AppState, action: Action): AppState {
       if (state.wellPaletteId === palette.id) return state;
       return { ...state, wellPaletteId: palette.id, wellComponentColors: {} };
     }
+
+    case 'open-queue-plate':
+      return openQueuePlate(state, action.plateId);
 
     case 'select-wells': {
       let wellIds: string[];

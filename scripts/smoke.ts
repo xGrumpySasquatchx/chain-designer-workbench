@@ -257,6 +257,22 @@ check(
   ).length === plate0.plate[0].chainIds.length,
 );
 check('the default well palette is the high-contrast row', plate0.wellPaletteId === DEFAULT_PALETTE_ID);
+
+console.log('\n— plate queue —');
+check('today’s queue has six plates', plate0.plateQueue.length === 6);
+check('the opening plate is on the bench', plate0.activePlateId === 'PLT-0001' && plate0.plate[0].lumaUid === 'LUM-0001');
+const p4 = run(plate0, { type: 'open-queue-plate', plateId: 'PLT-0002' });
+check(
+  'opening a queued plate loads its wells, not a picture of the plate',
+  p4.activePlateId === 'PLT-0002' && p4.plate[0].lumaUid === 'LUM-0097' && p4.selectedWells[0] === 'A1',
+);
+check('the previous plate is marked in progress', p4.plateQueue.find((p) => p.id === 'PLT-0001')?.status === 'in-progress');
+check(
+  'a half-filled plate stops at the last occupied well',
+  p4.plate.filter((w) => w.chainIds.length > 0).length === 48 && p4.plate[48].chainIds.length === 0,
+);
+const back = run(p4, { type: 'open-queue-plate', plateId: 'PLT-0001' });
+check('switching back restores the original Luma series', back.plate[0].lumaUid === 'LUM-0001');
 check(
   'well pies start at twelve o\'clock',
   wellPieBackground(['#111111', '#222222', '#333333']).startsWith('conic-gradient(from -90deg'),

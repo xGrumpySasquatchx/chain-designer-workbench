@@ -5,6 +5,7 @@ import { Bench } from './components/Bench';
 import { ConstructMap } from './components/ConstructMap';
 import { DesignPad } from './components/DesignPad';
 import { Plate } from './components/Plate';
+import { PlateQueue } from './components/PlateQueue';
 import { QcPanel } from './components/QcPanel';
 import { RegistryRail } from './components/RegistryRail';
 import { RegistryReview } from './components/RegistryReview';
@@ -149,12 +150,13 @@ export default function App() {
         }
       >
         <div className="column col-rail">
+          <PlateQueue />
           <RegistryRail />
         </div>
 
         <ColResizer
           area="res-rail"
-          tip="Drag to widen or narrow the registry column"
+          tip="Drag to widen or narrow the plate queue and parts registry column"
           onDelta={(dx) => setRailWidth((w) => clamp(w + dx, RAIL_RANGE))}
         />
 

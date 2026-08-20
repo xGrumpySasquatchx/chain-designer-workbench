@@ -169,6 +169,28 @@ export interface PlateWell {
   format: FormatDesign;
 }
 
+/** Where a 96-well plate sits in today's work queue. */
+export type PlateQueueStatus = 'queued' | 'active' | 'in-progress' | 'done';
+
+/**
+ * One plate the operator will cycle through today. The live bench edits
+ * `AppState.plate`; the queue holds a snapshot so switching plates does not
+ * throw work away.
+ */
+export interface QueuedPlate {
+  id: string;
+  barcode: string;
+  name: string;
+  program: string;
+  operator: string;
+  status: PlateQueueStatus;
+  wellCount: number;
+  formatLabel: string;
+  due: string;
+  note: string;
+  wells: PlateWell[];
+}
+
 /**
  * BioGlyph building blocks (docs.bioglyph.app — Design Pad). Shape encodes the
  * building block, color encodes the sequence/target it carries.

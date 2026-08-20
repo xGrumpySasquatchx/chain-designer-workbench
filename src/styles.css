@@ -613,6 +613,116 @@ body.resizing-v .panel-grip::after {
   text-overflow: ellipsis;
 }
 
+/* ---------- plate queue ---------- */
+
+.pq-filter {
+  margin-bottom: 8px;
+}
+
+.pq-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 0;
+}
+
+.pq-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas:
+    'status id'
+    'status name'
+    'status meta'
+    'status barcode';
+  column-gap: 8px;
+  row-gap: 1px;
+  width: 100%;
+  text-align: left;
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius);
+  padding: 6px 8px;
+  background: var(--surface-2);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.pq-row:hover {
+  border-color: var(--border-strong);
+}
+
+.pq-row.open {
+  border-color: var(--border-accent);
+  background: var(--bg-accent);
+}
+
+.pq-status {
+  grid-area: status;
+  align-self: start;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-radius: 999px;
+  padding: 3px 6px;
+  white-space: nowrap;
+}
+
+.pq-status.queued {
+  background: var(--surface-1);
+  color: var(--text-secondary);
+}
+
+.pq-status.active {
+  background: var(--bg-accent);
+  color: var(--text-accent);
+}
+
+.pq-status.in-progress {
+  background: var(--bg-warning);
+  color: var(--text-warning);
+}
+
+.pq-status.done {
+  background: var(--bg-pass);
+  color: var(--text-pass);
+}
+
+.pq-id {
+  grid-area: id;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.pq-name {
+  grid-area: name;
+  font-size: 12px;
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pq-meta,
+.pq-barcode {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+
+.pq-meta {
+  grid-area: meta;
+}
+
+.pq-barcode {
+  grid-area: barcode;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
 /* ---------- worklist ---------- */
 
 .worklist {
