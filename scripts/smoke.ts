@@ -261,11 +261,13 @@ check('the default well palette is the high-contrast row', plate0.wellPaletteId 
 console.log('\n— plate queue —');
 check('today’s queue has six plates', plate0.plateQueue.length === 6);
 check('the opening plate is on the bench', plate0.activePlateId === 'PLT-0001' && plate0.plate[0].lumaUid === 'LUM-0001');
+check('the plate view starts with the opening plate only', plate0.activePlateIds.join() === 'PLT-0001');
 const p4 = run(plate0, { type: 'open-queue-plate', plateId: 'PLT-0002' });
 check(
   'opening a queued plate loads its wells, not a picture of the plate',
   p4.activePlateId === 'PLT-0002' && p4.plate[0].lumaUid === 'LUM-0097' && p4.selectedWells[0] === 'A1',
 );
+check('a plain click replaces the open set', p4.activePlateIds.join() === 'PLT-0002');
 check('the previous plate is marked in progress', p4.plateQueue.find((p) => p.id === 'PLT-0001')?.status === 'in-progress');
 check(
   'a half-filled plate stops at the last occupied well',
@@ -273,6 +275,22 @@ check(
 );
 const back = run(p4, { type: 'open-queue-plate', plateId: 'PLT-0001' });
 check('switching back restores the original Luma series', back.plate[0].lumaUid === 'LUM-0001');
+const multi = run(plate0, { type: 'open-queue-plate', plateId: 'PLT-0002', mode: 'toggle' });
+check('cmd-select keeps both plates in view', multi.activePlateIds.join(',') === 'PLT-0001,PLT-0002');
+check('the original plate stays primary while others are added', multi.activePlateId === 'PLT-0001');
+check('the primary wells stay on the bench', multi.plate[0].lumaUid === 'LUM-0001');
+const span = run(plate0, { type: 'open-queue-plate', plateId: 'PLT-0003', mode: 'range' });
+check('shift-select opens the queue span', span.activePlateIds.join(',') === 'PLT-0001,PLT-0002,PLT-0003');
+check('the clicked end of the span becomes primary', span.activePlateId === 'PLT-0003');
+const wellOnOther = run(multi, { type: 'select-wells', wellId: 'B3', mode: 'single', plateId: 'PLT-0002' });
+check(
+  'clicking a well on another open plate makes it primary',
+  wellOnOther.activePlateId === 'PLT-0002' && wellOnOther.selectedWells[0] === 'B3',
+);
+check(
+  'the first plate is persisted when focusing another',
+  wellOnOther.plateQueue.find((p) => p.id === 'PLT-0001')?.wells[0].lumaUid === 'LUM-0001',
+);
 check(
   'well pies start at twelve o\'clock',
   wellPieBackground(['#111111', '#222222', '#333333']).startsWith('conic-gradient(from -90deg'),

@@ -14,8 +14,12 @@ const STATUS_LABEL: Record<PlateQueueStatus, string> = {
 
 type Filter = 'all' | 'remaining' | 'done';
 
-function rowTip(plate: QueuedPlate, filled: number, isOpen: boolean): string {
-  const action = isOpen ? 'Already open on the bench' : `Click to open ${plate.id} on the bench`;
+function rowTip(plate: QueuedPlate, filled: number, isOpen: boolean, isPrimary: boolean): string {
+  const action = isPrimary
+    ? 'On the bench. Cmd-click to keep it while adding others, or click another row to replace it.'
+    : isOpen
+      ? `Open in the plate view. Click a well to work it on the bench.`
+      : `Click to open ${plate.id} on the bench. Cmd-click to add it beside the plates already open; shift-click to open a range.`;
   return `${plate.barcode} · ${plate.program} · ${plate.formatLabel}. ${filled} of ${plate.wellCount} wells filled. Due ${plate.due}. ${plate.note}. ${action}.`;
 }
 
@@ -38,7 +42,7 @@ export function PlateQueue() {
   return (
     <Panel
       title="Plate queue"
-      tip="Today’s plates as a searchable worklist. Click a row to load that plate onto the bench — the 96-well image stays in the centre column."
+      tip="Today’s plates as a searchable worklist. Click a row to open that plate. Cmd-click to add or remove plates in the view; shift-click to open a range so you can scroll through them in bulk."
       trailing={`${remaining} remaining`}
       defaultHeight={220}
     >
@@ -78,15 +82,22 @@ export function PlateQueue() {
         {rows.length === 0 && <p className="hint">No plates match that search.</p>}
         {rows.map((plate) => {
           const filled = wellsFilled(plate.id === state.activePlateId ? state.plate : plate.wells);
-          const isOpen = plate.id === state.activePlateId;
+          const isPrimary = plate.id === state.activePlateId;
+          const isOpen = state.activePlateIds.includes(plate.id);
           return (
             <button
               key={plate.id}
               type="button"
               role="listitem"
-              className={`pq-row${isOpen ? ' open' : ''}`}
-              data-tip={rowTip(plate, filled, isOpen)}
-              onClick={() => dispatch({ type: 'open-queue-plate', plateId: plate.id })}
+              className={`pq-row${isOpen ? ' open' : ''}${isPrimary ? ' primary' : ''}`}
+              data-tip={rowTip(plate, filled, isOpen, isPrimary)}
+              onMouseDown={(e) => {
+                if (e.shiftKey) e.preventDefault();
+              }}
+              onClick={(e) => {
+                const mode = e.shiftKey ? 'range' : e.metaKey || e.ctrlKey ? 'toggle' : 'single';
+                dispatch({ type: 'open-queue-plate', plateId: plate.id, mode });
+              }}
             >
               <span className={`pq-status ${plate.status}`}>{STATUS_LABEL[plate.status]}</span>
               <span className="pq-id">{plate.id}</span>

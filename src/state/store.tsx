@@ -79,6 +79,9 @@ export interface AppState {
   plate: PlateWell[];
   /** Today's plates, shown as rows above the parts registry. */
   plateQueue: QueuedPlate[];
+  /** Plates currently shown in the plate view, in queue order. */
+  activePlateIds: string[];
+  /** The plate whose wells are on the bench. */
   activePlateId: string;
   selectedWells: string[];
   lastSelectedWellId: string | null;
@@ -114,8 +117,8 @@ export type Action =
   /** Drop an unregistered chain from the selected wells, and from the catalog if unused. */
   | { type: 'remove-chain'; chainId: string }
   | { type: 'rename-chain'; chainId: string; name: string }
-  | { type: 'select-wells'; wellId: string; mode: 'single' | 'toggle' | 'range' }
-  | { type: 'open-queue-plate'; plateId: string }
+  | { type: 'select-wells'; wellId: string; mode: 'single' | 'toggle' | 'range'; plateId?: string }
+  | { type: 'open-queue-plate'; plateId: string; mode?: 'single' | 'toggle' | 'range' }
   | { type: 'set-well-color'; chainId: string; color: string }
   | { type: 'reset-well-colors' }
   | { type: 'set-well-palette'; paletteId: string }
@@ -170,6 +173,7 @@ export function createInitialState(): AppState {
     chains: Object.fromEntries(chains.map((c) => [c.id, c])),
     plate,
     plateQueue,
+    activePlateIds: [active.id],
     activePlateId: active.id,
     selectedWells: ['A1'],
     lastSelectedWellId: 'A1',
@@ -296,32 +300,92 @@ function persistActivePlate(state: AppState): AppState {
   };
 }
 
-function openQueuePlate(state: AppState, plateId: string): AppState {
-  if (plateId === state.activePlateId) return state;
+function orderedPlateIds(state: AppState, ids: string[]): string[] {
+  const chosen = new Set(ids);
+  return state.plateQueue.map((p) => p.id).filter((id) => chosen.has(id));
+}
+
+function plateIdRange(state: AppState, fromId: string, toId: string): string[] {
+  const ids = state.plateQueue.map((p) => p.id);
+  const a = ids.indexOf(fromId);
+  const b = ids.indexOf(toId);
+  if (a < 0 || b < 0) return [toId];
+  return ids.slice(Math.min(a, b), Math.max(a, b) + 1);
+}
+
+function loadPlate(state: AppState, plateId: string): AppState {
+  const next = state.plateQueue.find((p) => p.id === plateId);
+  if (!next || plateId === state.activePlateId) return state;
   const saved = persistActivePlate(state);
-  const next = saved.plateQueue.find((p) => p.id === plateId);
-  if (!next) return saved;
-  const plateQueue = saved.plateQueue.map((p) => {
-    if (p.id === saved.activePlateId && p.status === 'active') return { ...p, status: 'in-progress' as const };
-    if (p.id === plateId) return { ...p, status: p.status === 'done' ? p.status : ('active' as const) };
-    return p;
-  });
-  const firstFilled = next.wells.find((w) => w.chainIds.length > 0)?.id ?? next.wells[0]?.id ?? 'A1';
-  return applyWellSelection(
-    {
-      ...saved,
-      plateQueue,
-      activePlateId: plateId,
-      plate: next.wells,
-      log: log(
-        saved,
-        'edit',
-        `Opened ${next.id} (${next.barcode}) — ${wellsFilled(next.wells)} of ${next.wellCount} wells`,
-      ),
-    },
-    [firstFilled],
-    firstFilled,
-  );
+  const plate = saved.plateQueue.find((p) => p.id === plateId)?.wells ?? next.wells;
+  return {
+    ...saved,
+    activePlateId: plateId,
+    plate,
+    plateQueue: saved.plateQueue.map((p) => {
+      if (p.id === saved.activePlateId && p.status === 'active') return { ...p, status: 'in-progress' as const };
+      if (p.id === plateId) return { ...p, status: p.status === 'done' ? p.status : ('active' as const) };
+      return p;
+    }),
+  };
+}
+
+function openQueuePlate(
+  state: AppState,
+  plateId: string,
+  mode: 'single' | 'toggle' | 'range' = 'single',
+): AppState {
+  const exists = state.plateQueue.some((p) => p.id === plateId);
+  if (!exists) return state;
+
+  let ids: string[];
+  if (mode === 'toggle') {
+    ids = state.activePlateIds.includes(plateId)
+      ? state.activePlateIds.filter((id) => id !== plateId)
+      : [...state.activePlateIds, plateId];
+    if (!ids.length) ids = [plateId];
+  } else if (mode === 'range') {
+    ids = plateIdRange(state, state.activePlateId, plateId);
+  } else {
+    ids = [plateId];
+  }
+  ids = orderedPlateIds(state, ids);
+
+  let primary = state.activePlateId;
+  if (mode === 'single' || mode === 'range') primary = plateId;
+  if (!ids.includes(primary)) primary = plateId;
+  if (!ids.includes(primary)) primary = ids[0];
+
+  if (
+    ids.length === state.activePlateIds.length &&
+    ids.every((id, i) => id === state.activePlateIds[i]) &&
+    primary === state.activePlateId
+  ) {
+    return state;
+  }
+
+  let next = { ...state, activePlateIds: ids };
+  if (primary !== state.activePlateId) {
+    next = loadPlate(next, primary);
+    const firstFilled =
+      next.plate.find((w) => w.chainIds.length > 0)?.id ?? next.plate[0]?.id ?? 'A1';
+    const opened = next.plateQueue.find((p) => p.id === primary);
+    next = applyWellSelection(
+      {
+        ...next,
+        log: log(
+          next,
+          'edit',
+          opened
+            ? `Opened ${opened.id} (${opened.barcode}) — ${wellsFilled(next.plate)} of ${opened.wellCount} wells`
+            : `Opened ${primary}`,
+        ),
+      },
+      [firstFilled],
+      firstFilled,
+    );
+  }
+  return { ...next, activePlateIds: ids };
 }
 
 function attachChainToWells(plate: PlateWell[], wellIds: string[], chainId: string): PlateWell[] {
@@ -648,22 +712,27 @@ export function reducer(state: AppState, action: Action): AppState {
     }
 
     case 'open-queue-plate':
-      return openQueuePlate(state, action.plateId);
+      return openQueuePlate(state, action.plateId, action.mode ?? 'single');
 
     case 'select-wells': {
+      let next = state;
+      let mode = action.mode;
+      if (action.plateId && action.plateId !== state.activePlateId) {
+        next = loadPlate(next, action.plateId);
+        if (mode === 'range') mode = 'single';
+      }
       let wellIds: string[];
-      if (action.mode === 'toggle') {
-        wellIds = state.selectedWells.includes(action.wellId)
-          ? state.selectedWells.filter((id) => id !== action.wellId)
-          : [...state.selectedWells, action.wellId];
+      if (mode === 'toggle') {
+        wellIds = next.selectedWells.includes(action.wellId)
+          ? next.selectedWells.filter((id) => id !== action.wellId)
+          : [...next.selectedWells, action.wellId];
         if (!wellIds.length) wellIds = [action.wellId];
-      } else if (action.mode === 'range' && state.lastSelectedWellId) {
-        wellIds = wellRange(state.lastSelectedWellId, action.wellId);
+      } else if (mode === 'range' && next.lastSelectedWellId) {
+        wellIds = wellRange(next.lastSelectedWellId, action.wellId);
       } else {
         wellIds = [action.wellId];
       }
-      const lastId = action.wellId;
-      return applyWellSelection(state, wellIds, lastId);
+      return applyWellSelection(next, wellIds, action.wellId);
     }
 
     case 'remove-chain': {
