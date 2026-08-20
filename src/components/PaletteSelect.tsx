@@ -4,9 +4,12 @@ import { PLATE_PALETTES, paletteById, type ColorPalette } from '../model/palette
 export function PaletteSelect({
   value,
   onChange,
+  scale = 1,
 }: {
   value: string;
   onChange: (paletteId: string) => void;
+  /** Matches the plate zoom so swatches stay in proportion with the wells. */
+  scale?: number;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -41,10 +44,14 @@ export function PaletteSelect({
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('resize', place);
     };
-  }, [open]);
+  }, [open, scale]);
 
   return (
-    <div className={`palette-select${open ? ' open' : ''}`} ref={rootRef}>
+    <div
+      className={`palette-select${open ? ' open' : ''}`}
+      ref={rootRef}
+      style={{ '--palette-scale': scale } as CSSProperties}
+    >
       <button
         ref={triggerRef}
         type="button"

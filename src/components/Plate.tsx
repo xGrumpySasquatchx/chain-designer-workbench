@@ -11,20 +11,21 @@ import {
 } from '../model/plate';
 import { useApp, useDispatch } from '../state/store';
 
-const MIN_WELL = 14;
-const MAX_WELL = 60;
-const DEFAULT_WELL = 18;
-
-function clampWell(size: number) {
-  return Math.max(MIN_WELL, Math.min(MAX_WELL, Math.round(size)));
-}
+const BASE_WELL = 18;
+const ZOOM_STEP = 10;
+const START_ZOOM_PCT = 164;
+const EXTRA_ZOOMS = 3;
+const MIN_ZOOM_PCT = Math.round((14 / BASE_WELL) * 100);
+const MAX_ZOOM_PCT = START_ZOOM_PCT + ZOOM_STEP * EXTRA_ZOOMS;
 
 function zoomPercent(size: number) {
-  return Math.round((size / DEFAULT_WELL) * 100);
+  return Math.round((size / BASE_WELL) * 100);
 }
 
-const MIN_ZOOM_PCT = zoomPercent(MIN_WELL);
-const MAX_ZOOM_PCT = zoomPercent(MAX_WELL);
+function wellFromZoom(pct: number) {
+  const clamped = Math.max(MIN_ZOOM_PCT, Math.min(MAX_ZOOM_PCT, Math.round(pct)));
+  return (clamped / 100) * BASE_WELL;
+}
 
 export function Plate() {
   const state = useApp();
@@ -32,7 +33,7 @@ export function Plate() {
   const selected = new Set(state.selectedWells);
   const primary = state.lastSelectedWellId;
   const viewportRef = useRef<HTMLDivElement | null>(null);
-  const [wellSize, setWellSize] = useState(DEFAULT_WELL);
+  const [wellSize, setWellSize] = useState(() => wellFromZoom(START_ZOOM_PCT));
 
   useEffect(() => {
     const node = viewportRef.current;
@@ -42,8 +43,8 @@ export function Plate() {
       e.preventDefault();
       setWellSize((size) => {
         const current = zoomPercent(size);
-        const next = current + (e.deltaY < 0 ? 10 : -10);
-        return clampWell((next / 100) * DEFAULT_WELL);
+        const next = current + (e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP);
+        return wellFromZoom(next);
       });
     };
     node.addEventListener('wheel', onWheel, { passive: false });
@@ -60,12 +61,11 @@ export function Plate() {
     if (!width) return;
     const label = 16;
     const gap = Math.max(2, wellSize * 0.12);
-    setWellSize(clampWell((width - label - 11 * gap) / 12));
+    setWellSize(wellFromZoom(zoomPercent((width - label - 11 * gap) / 12)));
   }
 
   function setZoomPct(next: number) {
-    const clamped = Math.max(MIN_ZOOM_PCT, Math.min(MAX_ZOOM_PCT, Math.round(next)));
-    setWellSize(clampWell((clamped / 100) * DEFAULT_WELL));
+    setWellSize(wellFromZoom(next));
   }
 
   const pct = zoomPercent(wellSize);
@@ -102,15 +102,15 @@ export function Plate() {
               className="plate-tool"
               data-tip={`Zoom out (${MIN_ZOOM_PCT}–${MAX_ZOOM_PCT}%)`}
               disabled={pct <= MIN_ZOOM_PCT}
-              onClick={() => setZoomPct(pct - 10)}
+              onClick={() => setZoomPct(pct - ZOOM_STEP)}
             >
               −
             </button>
             <button
               type="button"
               className="plate-zoom-pct"
-              data-tip="Reset zoom to 100%"
-              onClick={() => setZoomPct(100)}
+              data-tip={`Reset zoom to ${START_ZOOM_PCT}%`}
+              onClick={() => setZoomPct(START_ZOOM_PCT)}
             >
               {pct}%
             </button>
@@ -119,7 +119,7 @@ export function Plate() {
               className="plate-tool"
               data-tip={`Zoom in (${MIN_ZOOM_PCT}–${MAX_ZOOM_PCT}%)`}
               disabled={pct >= MAX_ZOOM_PCT}
-              onClick={() => setZoomPct(pct + 10)}
+              onClick={() => setZoomPct(pct + ZOOM_STEP)}
             >
               +
             </button>
@@ -129,7 +129,7 @@ export function Plate() {
           </button>
         </span>
       }
-      defaultHeight={228}
+      defaultHeight={392}
     >
       <div className="plate-stage">
         <div
@@ -160,6 +160,7 @@ export function Plate() {
         <div className="plate-toolbar">
           <PaletteSelect
             value={state.wellPaletteId}
+            scale={pct / 100}
             onChange={(paletteId) => dispatch({ type: 'set-well-palette', paletteId })}
           />
         </div>

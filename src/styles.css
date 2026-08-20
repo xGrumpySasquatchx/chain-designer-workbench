@@ -1260,17 +1260,18 @@ body.resizing-v .panel-grip::after {
   position: relative;
   width: max-content;
   max-width: 100%;
+  --ps: var(--palette-scale, 1);
 }
 
 .palette-select-trigger {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: calc(10px * var(--ps));
   width: 100%;
   border: 0.5px solid var(--border);
-  border-radius: 8px;
+  border-radius: calc(8px * var(--ps));
   background: var(--surface-1);
-  padding: 7px 10px;
+  padding: calc(7px * var(--ps)) calc(10px * var(--ps));
   cursor: pointer;
 }
 
@@ -1282,7 +1283,7 @@ body.resizing-v .panel-grip::after {
 .palette-select-caret {
   margin-left: auto;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: calc(11px * var(--ps));
   line-height: 1;
 }
 
@@ -1292,14 +1293,14 @@ body.resizing-v .panel-grip::after {
   top: calc(100% + 4px);
   left: 0;
   min-width: 100%;
-  padding: 8px;
+  padding: calc(8px * var(--ps));
   background: var(--surface-2);
   border: 0.5px solid var(--border);
-  border-radius: 8px;
+  border-radius: calc(8px * var(--ps));
   box-shadow: 0 8px 24px rgba(44, 44, 42, 0.12);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: calc(8px * var(--ps));
 }
 
 .palette-select-option {
@@ -1307,8 +1308,8 @@ body.resizing-v .panel-grip::after {
   align-items: center;
   border: none;
   background: transparent;
-  padding: 2px 4px;
-  border-radius: 4px;
+  padding: calc(2px * var(--ps)) calc(4px * var(--ps));
+  border-radius: calc(4px * var(--ps));
   cursor: pointer;
 }
 
@@ -1319,12 +1320,12 @@ body.resizing-v .panel-grip::after {
 
 .palette-swatches {
   display: flex;
-  gap: 2px;
+  gap: calc(2px * var(--ps));
 }
 
 .palette-swatch {
-  width: 18px;
-  height: 18px;
+  width: calc(18px * var(--ps));
+  height: calc(18px * var(--ps));
   flex: none;
 }
 
