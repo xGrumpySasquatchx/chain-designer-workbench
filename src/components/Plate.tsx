@@ -14,7 +14,7 @@ import type { PlateWell, QueuedPlate } from '../model/types';
 
 const BASE_WELL = 18;
 const ZOOM_STEP = 10;
-const START_ZOOM_PCT = 189;
+const START_ZOOM_PCT = 194;
 const EXTRA_ZOOMS = 3;
 const MIN_ZOOM_PCT = Math.round((14 / BASE_WELL) * 100);
 const MAX_ZOOM_PCT = START_ZOOM_PCT + ZOOM_STEP * EXTRA_ZOOMS;
