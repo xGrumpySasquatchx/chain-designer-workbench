@@ -23,7 +23,6 @@ export function PaletteSelect({
         position: 'fixed',
         top: box.bottom + 4,
         left: box.left,
-        width: box.width,
       });
     };
     place();
@@ -54,7 +53,7 @@ export function PaletteSelect({
         data-tip="Choose a colour palette for well components"
         onClick={() => setOpen((v) => !v)}
       >
-        <SwatchRow palette={selected} />
+        <PaletteStrip palette={selected} />
         <span className="palette-select-caret" aria-hidden>
           ▾
         </span>
@@ -81,7 +80,8 @@ export function PaletteSelect({
                   setOpen(false);
                 }}
               >
-                <SwatchRow palette={palette} />
+                <PaletteStrip palette={palette} />
+                <span className="palette-select-name">{palette.name}</span>
               </button>
             );
           })}
@@ -91,12 +91,17 @@ export function PaletteSelect({
   );
 }
 
-function SwatchRow({ palette }: { palette: ColorPalette }) {
+function PaletteStrip({ palette }: { palette: ColorPalette }) {
+  const stops = palette.colors.map((color, i, all) => {
+    const start = (i / all.length) * 100;
+    const end = ((i + 1) / all.length) * 100;
+    return `${color} ${start}% ${end}%`;
+  });
   return (
-    <span className="palette-swatches" aria-hidden>
-      {palette.colors.map((color) => (
-        <span key={color} className="palette-swatch" style={{ background: color }} />
-      ))}
-    </span>
+    <span
+      className="palette-strip"
+      aria-hidden
+      style={{ background: `linear-gradient(to right, ${stops.join(', ')})` }}
+    />
   );
 }
