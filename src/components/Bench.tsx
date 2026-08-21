@@ -1,11 +1,11 @@
 import { useState, type DragEvent } from 'react';
 import { Panel } from './Panel';
-import { RESOLUTION_LABELS } from '../model/parts';
+import { COLORS, PART_LABELS, RESOLUTION_LABELS } from '../model/parts';
 import { variantCount } from '../model/combinatorics';
 import { useApp, useDispatch } from '../state/store';
 import { ChainRow, NODE_DRAG_TYPE } from './ChainRow';
 import { GripIcon } from './Icons';
-import type { BenchGroup, Resolution } from '../model/types';
+import type { BenchGroup, PartType, Resolution } from '../model/types';
 
 interface DropTarget {
   beforeId: string | null;
@@ -16,6 +16,37 @@ const RESOLUTION_TIPS: Record<Resolution, string> = {
   1: 'Coarsest view: just the insert and the backbone it sits on',
   2: 'Adds the linkers and hinges that join the domains',
   3: 'Every component, including promoters and terminators',
+};
+
+const LEGEND_ORDER: PartType[] = [
+  'promoter',
+  'vh',
+  'vl',
+  'ch1',
+  'cl',
+  'hinge',
+  'ch2',
+  'ch3',
+  'linker',
+  'payload',
+  'tag',
+  'term',
+];
+
+/** The legend doubles as the glossary, so each entry says what the part is for. */
+const LEGEND_TIPS: Record<PartType, string> = {
+  promoter: 'Drives transcription of the chain — nucleotide only',
+  vh: 'Heavy-chain variable domain: carries half of one binding site',
+  vl: 'Light-chain variable domain: pairs with VH to complete a binding site',
+  ch1: 'First heavy-chain constant domain, pairs with CL across the Fab',
+  cl: 'Light-chain constant domain, kappa or lambda',
+  hinge: 'Flexible segment between the arms and the Fc',
+  ch2: 'Fc domain carrying effector function — LALA silences it',
+  ch3: 'Fc dimerisation domain: knob-into-hole pairing lives here',
+  linker: 'Peptide linker joining two domains on the same chain',
+  payload: 'Non-antibody cargo: mutein, mini-protein or de novo binder',
+  tag: 'Purification or detection tag fused to a terminus',
+  term: 'Terminator / polyA signal — ends the transcript',
 };
 
 export function Bench() {
@@ -64,6 +95,16 @@ export function Bench() {
     <Panel
       title="Chain bench"
       tip="One row per chain. Each row is the chain's component composition, at the resolution you choose."
+      afterTitle={
+        <div className="legend" aria-label="Part colour legend">
+          {LEGEND_ORDER.map((type) => (
+            <span key={type} data-tip={LEGEND_TIPS[type]}>
+              <span className="swatch" style={{ background: COLORS[type] }} />
+              {PART_LABELS[type]}
+            </span>
+          ))}
+        </div>
+      }
       trailing={`${state.selection.length} selected`}
       grow
       onDragEnd={() => setDrop(null)}

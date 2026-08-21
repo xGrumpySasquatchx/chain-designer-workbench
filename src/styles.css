@@ -20,7 +20,8 @@
   --on-accent: #ffffff;
   --radius: 8px;
   --radius-lg: 12px;
-  font-family: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif;
+  font-family: 'Public Sans', sans-serif;
+  font-weight: 300;
   font-synthesis: none;
 }
 
@@ -33,11 +34,17 @@ body {
   background: var(--surface-0);
   color: var(--text-primary);
   font-size: 13px;
+  font-family: 'Public Sans', sans-serif;
+  font-weight: 300;
   -webkit-font-smoothing: antialiased;
 }
 
-button {
+button,
+input,
+select,
+textarea {
   font-family: inherit;
+  font-weight: 300;
 }
 
 /* ---------- app shell ---------- */
@@ -60,7 +67,7 @@ button {
 
 .app-header h1 {
   font-size: 22px;
-  font-weight: 600;
+  font-weight: 300;
   margin: 0;
 }
 
@@ -84,6 +91,7 @@ button {
   align-items: center;
   gap: 6px;
   flex: none;
+  margin-left: auto;
 }
 
 .review-open .badge {
@@ -96,25 +104,26 @@ button {
 .legend {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 16px;
-  margin-left: auto;
-  font-size: 14px;
+  align-items: center;
+  gap: 4px 8px;
+  font-size: 11px;
   color: var(--text-secondary);
-  max-width: 620px;
-  justify-content: flex-end;
+  min-width: 0;
+  flex: 1 1 180px;
 }
 
 .legend span {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 4px;
   cursor: help;
+  white-space: nowrap;
 }
 
 .swatch {
-  width: 20px;
-  height: 20px;
-  border-radius: 5px;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
   display: inline-block;
   flex: none;
 }
@@ -248,21 +257,23 @@ body.resizing-v {
 .panel-head {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   margin-bottom: 8px;
   flex: none;
+  flex-wrap: wrap;
 }
 
 .panel-title {
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 300;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--text-muted);
+  color: #000000;
   margin: 0;
   display: flex;
   align-items: center;
   gap: 6px;
+  flex: none;
   cursor: help;
 }
 
@@ -270,7 +281,7 @@ body.resizing-v {
 .panel-title .count {
   margin-left: auto;
   font-size: 11px;
-  font-weight: 500;
+  font-weight: 300;
   letter-spacing: 0;
   text-transform: none;
   color: var(--text-muted);
@@ -664,7 +675,7 @@ body.resizing-v .panel-grip::after {
   grid-area: status;
   align-self: start;
   font-size: 9px;
-  font-weight: 700;
+  font-weight: 300;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   border-radius: 999px;
@@ -694,15 +705,15 @@ body.resizing-v .panel-grip::after {
 
 .pq-id {
   grid-area: id;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: inherit;
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 300;
 }
 
 .pq-name {
   grid-area: name;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 300;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -725,7 +736,7 @@ body.resizing-v .panel-grip::after {
 
 .pq-barcode {
   grid-area: barcode;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: inherit;
 }
 
 /* ---------- worklist ---------- */
@@ -756,11 +767,11 @@ body.resizing-v .panel-grip::after {
 
 .wl-well {
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 300;
 }
 
 .wl-uid {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: inherit;
   font-size: 10.5px;
   color: var(--text-secondary);
 }
@@ -1069,7 +1080,7 @@ body.resizing-v .panel-grip::after {
   border: none;
   background: transparent;
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 300;
   color: var(--text-primary);
   width: 130px;
   padding: 2px;
@@ -1140,7 +1151,7 @@ body.resizing-v .panel-grip::after {
 }
 
 .mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: inherit;
   font-size: 11px;
 }
 
@@ -1237,7 +1248,7 @@ body.resizing-v .panel-grip::after {
 }
 
 .plate-card-id {
-  font-weight: 700;
+  font-weight: 300;
   letter-spacing: 0.02em;
 }
 
@@ -1247,7 +1258,7 @@ body.resizing-v .panel-grip::after {
 
 .plate-card-flag {
   font-size: 9px;
-  font-weight: 700;
+  font-weight: 300;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--text-accent);
@@ -1516,6 +1527,12 @@ body.resizing-v .panel-grip::after {
 .gmap-svg {
   width: 100%;
   display: block;
+  font-family: 'Public Sans', sans-serif;
+}
+
+.gmap-svg text {
+  font-family: 'Public Sans', sans-serif;
+  font-weight: 300;
 }
 
 /* ---------- qc ---------- */
@@ -1605,7 +1622,7 @@ body.resizing-v .panel-grip::after {
 
 .lc-title {
   font-size: 11.5px;
-  font-weight: 500;
+  font-weight: 300;
 }
 
 .lc-head > .btn {
@@ -1703,7 +1720,7 @@ body.resizing-v .panel-grip::after {
 
 .rev-title {
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 300;
 }
 
 .rev-head > .btn {
@@ -1803,7 +1820,7 @@ body.resizing-v .panel-grip::after {
 
 .variant-card .vname {
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 300;
   display: block;
   margin-bottom: 6px;
 }

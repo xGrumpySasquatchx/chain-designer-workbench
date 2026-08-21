@@ -201,7 +201,7 @@ function CircularView({ model, activeFeatureId, onSelect }: ViewProps) {
                   textAnchor={right ? 'start' : 'end'}
                   dominantBaseline="middle"
                   fontSize={LABEL_FONT}
-                  fontWeight={selected ? 600 : 400}
+                  fontWeight={300}
                   fill={colors.outline}
                 >
                   {truncate(feature.name, right ? labelRoom(label.x) : labelRoom(336 - label.x))}
@@ -313,7 +313,7 @@ function LinearRow({
                 y={CALLOUT_H + 8}
                 textAnchor="middle"
                 fontSize={RULER_FONT}
-                fontWeight={700}
+                fontWeight={300}
                 fill={SELECT_BLUE}
               >
                 {coordinate(bp)}
@@ -434,7 +434,7 @@ function LinearRow({
                       textAnchor="middle"
                       dominantBaseline="middle"
                       fontSize={LABEL_FONT}
-                      fontWeight={isSelected ? 700 : 400}
+                      fontWeight={300}
                       fill={textOn(colors.mid)}
                     >
                       {feature.name}
@@ -456,7 +456,7 @@ function LinearRow({
                         y={laneTop + BAR_H + 15}
                         textAnchor="middle"
                         fontSize={LABEL_FONT}
-                        fontWeight={700}
+                        fontWeight={300}
                         fill={colors.outline}
                       >
                         {truncate(feature.name, 30)}

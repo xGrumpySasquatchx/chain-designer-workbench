@@ -1,5 +1,4 @@
 import { useEffect, useState, type PointerEvent } from 'react';
-import { COLORS, PART_LABELS } from './model/parts';
 import { ActivityLog } from './components/ActivityLog';
 import { Bench } from './components/Bench';
 import { ConstructMap } from './components/ConstructMap';
@@ -13,38 +12,6 @@ import { TooltipLayer } from './components/Tooltip';
 import { VariantGallery } from './components/VariantGallery';
 import { WorklistStrip } from './components/WorklistStrip';
 import { useApp, useDispatch } from './state/store';
-import type { PartType } from './model/types';
-
-const LEGEND_ORDER: PartType[] = [
-  'promoter',
-  'vh',
-  'vl',
-  'ch1',
-  'cl',
-  'hinge',
-  'ch2',
-  'ch3',
-  'linker',
-  'payload',
-  'tag',
-  'term',
-];
-
-/** The legend doubles as the glossary, so each entry says what the part is for. */
-const LEGEND_TIPS: Record<PartType, string> = {
-  promoter: 'Drives transcription of the chain — nucleotide only',
-  vh: 'Heavy-chain variable domain: carries half of one binding site',
-  vl: 'Light-chain variable domain: pairs with VH to complete a binding site',
-  ch1: 'First heavy-chain constant domain, pairs with CL across the Fab',
-  cl: 'Light-chain constant domain, kappa or lambda',
-  hinge: 'Flexible segment between the arms and the Fc',
-  ch2: 'Fc domain carrying effector function — LALA silences it',
-  ch3: 'Fc dimerisation domain: knob-into-hole pairing lives here',
-  linker: 'Peptide linker joining two domains on the same chain',
-  payload: 'Non-antibody cargo: mutein, mini-protein or de novo binder',
-  tag: 'Purification or detection tag fused to a terminus',
-  term: 'Terminator / polyA signal — ends the transcript',
-};
 
 const RAIL_RANGE: [number, number] = [186, 460];
 const INSPECTOR_RANGE: [number, number] = [260, 640];
@@ -129,14 +96,6 @@ export default function App() {
           Registered
           <span className="badge">{molCount ? `${molCount} · ${regCount}` : regCount}</span>
         </button>
-        <div className="legend" aria-label="Part colour legend">
-          {LEGEND_ORDER.map((type) => (
-            <span key={type} data-tip={LEGEND_TIPS[type]}>
-              <span className="swatch" style={{ background: COLORS[type] }} />
-              {PART_LABELS[type]}
-            </span>
-          ))}
-        </div>
       </header>
 
       <div

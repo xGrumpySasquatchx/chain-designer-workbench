@@ -14,6 +14,8 @@ import { TooltipLayer } from './Tooltip';
 interface PanelProps {
   title: string;
   trailing?: ReactNode;
+  /** Sits immediately after the title — used for the chain-bench colour legend. */
+  afterTitle?: ReactNode;
   /** Describes the panel itself on hover. */
   tip: string;
   /** Fill the remaining column height instead of hugging the content. */
@@ -29,6 +31,7 @@ const MIN_HEIGHT = 120;
 export function Panel({
   title,
   trailing,
+  afterTitle,
   tip,
   grow,
   defaultHeight,
@@ -63,6 +66,7 @@ export function Panel({
       <span className="panel-title" data-tip={tip}>
         {title}
       </span>
+      {afterTitle}
       {trailing !== undefined && <span className="count">{trailing}</span>}
       <button
         className="panel-btn"
