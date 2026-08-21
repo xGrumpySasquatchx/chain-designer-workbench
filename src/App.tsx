@@ -80,7 +80,7 @@ export default function App() {
     <div className="app">
       <header className="app-header">
         <div>
-          <h1>MsAb construct designer</h1>
+          <h1>Protein Chain Designer</h1>
           <p>
             Multiple-insert cloning bench — parts registry, chain bench, live molecule and construct
             views, wired to the BB → INS → VEC → CC → REG → MOL loop.

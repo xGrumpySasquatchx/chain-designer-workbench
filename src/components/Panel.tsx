@@ -189,7 +189,7 @@ function PopOutWindow({ title, onClose, onBlocked, children }: PopOutProps) {
       const doc = win!.document;
       if (!doc?.body) return;
 
-      doc.title = `${title} — MsAb construct designer`;
+      doc.title = `${title} — Protein Chain Designer`;
       if (!doc.head.querySelector('[data-msab-style]')) {
         document.querySelectorAll('style, link[rel="stylesheet"]').forEach((node) => {
           const copy = node.cloneNode(true) as HTMLElement;

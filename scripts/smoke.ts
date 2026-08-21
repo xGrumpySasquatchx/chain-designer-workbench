@@ -256,7 +256,7 @@ check(
     uniqueChainIds(plate0.plate),
   ).length === plate0.plate[0].chainIds.length,
 );
-check('the default well palette is the high-contrast row', plate0.wellPaletteId === DEFAULT_PALETTE_ID);
+check('the default well palette is Magenta Dream', plate0.wellPaletteId === DEFAULT_PALETTE_ID);
 
 console.log('\n— plate queue —');
 check('today’s queue has six plates', plate0.plateQueue.length === 6);
@@ -296,10 +296,10 @@ check(
   wellPieBackground(['#111111', '#222222', '#333333']).startsWith('conic-gradient(from -90deg'),
 );
 check('six palettes are offered for the plate', PLATE_PALETTES.length === 6);
-const paletted = run(plate0, { type: 'set-well-palette', paletteId: 'classic' });
+const paletted = run(plate0, { type: 'set-well-palette', paletteId: 'golden-sunrise' });
 check(
   'choosing a palette recolors wells in plate order',
-  paletted.wellPaletteId === 'classic' &&
+  paletted.wellPaletteId === 'golden-sunrise' &&
     wellElementColors(
       paletted.plate[0],
       paletted.chains,
@@ -307,7 +307,7 @@ check(
       paletted.wellComponentColors,
       paletted.wellPaletteId,
       uniqueChainIds(paletted.plate),
-    )[0] === PLATE_PALETTES[0].colors[0],
+    )[0] === PLATE_PALETTES.find((p) => p.id === 'golden-sunrise')!.colors[0],
 );
 const recolored = run(plate0, { type: 'set-well-color', chainId: LIGHT, color: '#00aa88' });
 check(
