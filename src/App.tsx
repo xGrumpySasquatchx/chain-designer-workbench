@@ -3,6 +3,7 @@ import { ActivityLog } from './components/ActivityLog';
 import { Bench } from './components/Bench';
 import { ConstructMap } from './components/ConstructMap';
 import { DesignPad } from './components/DesignPad';
+import { PepPanel } from './components/PepPanel';
 import { Plate } from './components/Plate';
 import { PlateQueue } from './components/PlateQueue';
 import { QcPanel } from './components/QcPanel';
@@ -123,6 +124,7 @@ export default function App() {
           <Plate />
           <WorklistStrip />
           <Bench />
+          <PepPanel />
         </div>
 
         <ColResizer

@@ -41,6 +41,21 @@ import { uniqueChainIds, wellRange, lumaUid, wellElementColors, componentColor }
 import { DEFAULT_PALETTE_ID, PLATE_PALETTES, wellPieBackground } from '../src/model/palettes';
 import { inAlphabet, lengthIn } from '../src/model/parts';
 import { runFormatQc, runQc } from '../src/model/qc';
+import {
+  STAGES,
+  bottleneck,
+  buildTracker,
+  chainSchedule,
+  cloneStages,
+  computeStage,
+  emptyActuals,
+  expectedDuration,
+  programDuration,
+  programStartDate,
+  totalEffective,
+  weeklyCapacity,
+  weeksToClear,
+} from '../src/model/pep';
 import { createInitialState, reducer, type Action, type AppState } from '../src/state/store';
 
 let failures = 0;
@@ -822,6 +837,45 @@ check('a circular annotation is an arc band closed at the point', arc.split('A')
 check(
   'the backbone origin takes the Geneious rep_origin colour',
   model.features.find((f) => f.name === 'ori')?.color === '#00A8F0',
+);
+
+console.log('\n— expression & purification PERT —');
+const construct = STAGES[0];
+check(
+  'PERT expected is (O + 4L + P) / 6',
+  Math.abs(expectedDuration(construct) - (0.5 + 4 + 2) / 6) < 1e-12,
+);
+check(
+  'effective duration adds the scheduling buffer',
+  Math.abs(totalEffective(construct) - (expectedDuration(construct) + 0.25)) < 1e-12,
+);
+const harvest = STAGES.find((s) => s.id === 13)!;
+check(
+  'harvest weekly throughput is batch × 7 / cycle',
+  Math.abs(weeklyCapacity(harvest) - (8 * 7) / totalEffective(harvest)) < 1e-9,
+);
+check('harvest is the pipeline bottleneck', bottleneck(STAGES).stage.id === 13);
+check(
+  'a single construct is about 44 calendar days',
+  Math.abs(programDuration(STAGES) - 43.95) < 1e-6,
+);
+const cloning = computeStage(STAGES.find((s) => s.id === 6)!, STAGES);
+check(
+  'cloning rework cost is the sum of stages 3–6',
+  cloning.reworkCost != null && Math.abs(cloning.reworkCost - 9.166666666666668) < 1e-9,
+);
+const start = programStartDate();
+const baseline = chainSchedule(STAGES, start);
+const delayed = emptyActuals();
+delayed[1] = { start: '2026-09-01', duration: '2', reworkDelay: '0' };
+const rows = buildTracker(cloneStages(), delayed, baseline, start);
+check(
+  'an actual duration longer than baseline slips the program forecast',
+  rows[0].status === 'complete' && rows[14].varianceD > 0.6,
+);
+check(
+  'twelve targets clear in under two weeks at the harvest rate',
+  Math.abs((weeksToClear(12, bottleneck(STAGES).weekly) ?? 0) - 12 / weeklyCapacity(harvest)) < 1e-9,
 );
 
 console.log(`\n${failures === 0 ? 'All checks passed.' : `${failures} check(s) failed.`}`);
