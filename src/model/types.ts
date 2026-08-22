@@ -189,6 +189,11 @@ export interface QueuedPlate {
   due: string;
   note: string;
   wells: PlateWell[];
+  /**
+   * Where this plate sits in the expression/purification process matrix when it
+   * is not the live bench plate. The open plate is scored from its chains instead.
+   */
+  pepStage: number;
 }
 
 /**

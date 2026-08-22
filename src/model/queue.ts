@@ -19,6 +19,7 @@ export function initialPlateQueue(): QueuedPlate[] {
       formatLabel: 'IgG1 bispecific',
       due: 'Now',
       note: 'Opening plate — shared light chain with row × column heavies',
+      pepStage: 1,
       wells: makePlateWells(0, 96),
     },
     {
@@ -32,6 +33,7 @@ export function initialPlateQueue(): QueuedPlate[] {
       formatLabel: 'mAb IgG1',
       due: '11:30',
       note: 'Primary screen plate 4 of 6 — rows A–D filled',
+      pepStage: 11,
       wells: makePlateWells(1, 48),
     },
     {
@@ -45,6 +47,7 @@ export function initialPlateQueue(): QueuedPlate[] {
       formatLabel: 'IgG1 bispecific',
       due: '13:00',
       note: 'Resume after lunch — format fitness still open on row G',
+      pepStage: 3,
       wells: makePlateWells(2, 72),
     },
     {
@@ -58,6 +61,7 @@ export function initialPlateQueue(): QueuedPlate[] {
       formatLabel: 'VHH-Fc',
       due: '15:15',
       note: 'Humanization levels 1–3 across the plate',
+      pepStage: 3,
       wells: makePlateWells(3, 96),
     },
     {
@@ -71,6 +75,7 @@ export function initialPlateQueue(): QueuedPlate[] {
       formatLabel: 'IgG1 mAb',
       due: 'Done',
       note: 'Yesterday’s QC plate — SEC and intact mass signed off',
+      pepStage: 15,
       wells: makePlateWells(4, 96),
     },
     {
@@ -84,6 +89,7 @@ export function initialPlateQueue(): QueuedPlate[] {
       formatLabel: 'IgG1 mAb',
       due: '16:45',
       note: 'FR-graft series — first two rows only',
+      pepStage: 1,
       wells: makePlateWells(5, 24),
     },
   ];

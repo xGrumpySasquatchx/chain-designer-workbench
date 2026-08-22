@@ -2032,6 +2032,73 @@ body.resizing-v .panel-grip::after {
   color: var(--text-pass);
 }
 
+.pep-lot-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.pep-lot {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) auto;
+  grid-template-areas:
+    'id name stage'
+    'id meta stage';
+  column-gap: 8px;
+  row-gap: 1px;
+  width: 100%;
+  text-align: left;
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius);
+  padding: 6px 8px;
+  background: var(--surface-2);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.pep-lot:hover {
+  border-color: var(--border-strong);
+}
+
+.pep-lot.current {
+  border-color: var(--border-accent);
+  background: var(--bg-accent);
+}
+
+.pep-lot-id {
+  grid-area: id;
+  font-size: 11px;
+  align-self: center;
+}
+
+.pep-lot-name {
+  grid-area: name;
+  font-size: 12px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pep-lot-meta {
+  grid-area: meta;
+  font-size: 10.5px;
+  color: var(--text-muted);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pep-lot-stage {
+  grid-area: stage;
+  align-self: center;
+  font-size: 10.5px;
+  color: var(--text-accent);
+  white-space: nowrap;
+}
+
 .pep-kpis {
   display: flex;
   flex-wrap: wrap;

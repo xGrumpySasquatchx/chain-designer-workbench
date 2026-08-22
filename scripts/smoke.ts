@@ -45,13 +45,17 @@ import {
   STAGES,
   bottleneck,
   buildTracker,
+  chainPepStage,
+  cloningStage,
   chainSchedule,
   cloneStages,
   computeStage,
   emptyActuals,
   expectedDuration,
+  lotsFromWorkbench,
   programDuration,
   programStartDate,
+  remainingTargets,
   totalEffective,
   weeklyCapacity,
   weeksToClear,
@@ -876,6 +880,46 @@ check(
 check(
   'twelve targets clear in under two weeks at the harvest rate',
   Math.abs((weeksToClear(12, bottleneck(STAGES).weekly) ?? 0) - 12 / weeklyCapacity(harvest)) < 1e-9,
+);
+
+console.log('\n— workbench plates feed the process matrix —');
+const seeded = createInitialState();
+const lots = lotsFromWorkbench(seeded.plateQueue, seeded.chains, seeded.activePlateId, seeded.plate);
+check('each queued plate is a PEP lot', lots.length === 6);
+check(
+  'the open HER2 × CD3 plate sits at construct request because the HER2 arm is still empty',
+  lots.find((l) => l.id === 'PLT-0001')?.stageId === 1,
+);
+check(
+  'TFR screening is in expression screening',
+  lots.find((l) => l.id === 'PLT-0002')?.stageId === 11,
+);
+check(
+  'yesterday’s QC plate has reached storage',
+  lots.find((l) => l.id === 'PLT-0005')?.stageId === 15,
+);
+check(
+  'load is filled wells, not an invented target count',
+  remainingTargets(lots) === lots.filter((l) => l.stageId < 15).reduce((s, l) => s + l.n, 0) &&
+    lots.find((l) => l.id === 'PLT-0002')?.n === 48,
+);
+const her2VhSlot = seeded.chains['CH-0002'].slots.findIndex((s) => s.type === 'vh');
+const cd3VhSlot = seeded.chains['CH-0003'].slots.findIndex((s) => s.type === 'vh');
+const afterVh = run(
+  seeded,
+  { type: 'place-block', chainId: 'CH-0002', slotIndex: her2VhSlot, blockId: 'BB-0010' },
+  { type: 'place-block', chainId: 'CH-0003', slotIndex: cd3VhSlot, blockId: 'BB-0012' },
+);
+const advanced = lotsFromWorkbench(afterVh.plateQueue, afterVh.chains, afterVh.activePlateId, afterVh.plate);
+check('the HER2 arm has a VH slot to place into', her2VhSlot >= 0 && cd3VhSlot >= 0);
+check(
+  'placing a VH marks that chain as sequence design',
+  chainPepStage(afterVh.chains['CH-0002']) === 3,
+);
+check(
+  'filling both empty A1 arms advances the open plate to sequence design',
+  cloningStage(afterVh.plate, afterVh.chains) === 3 &&
+    advanced.find((l) => l.id === 'PLT-0001')?.stageId === 3,
 );
 
 console.log(`\n${failures === 0 ? 'All checks passed.' : `${failures} check(s) failed.`}`);

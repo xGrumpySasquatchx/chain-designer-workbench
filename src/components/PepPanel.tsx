@@ -1,59 +1,83 @@
 import { useMemo, useState } from 'react';
 import { Panel } from './Panel';
 import {
-  PROGRAM_START,
-  STAGES,
   STATUS_LABEL,
   TAB_LABEL,
   TAB_TIP,
+  actualsFromLot,
   bottleneck,
   buildTracker,
   chainSchedule,
   cloneStages,
   computeStage,
-  emptyActuals,
   fmtDate,
   fmtDays,
+  lotsFromWorkbench,
+  occupancyByStage,
+  parseIsoDate,
   parseNumber,
   programDuration,
-  programStartDate,
+  remainingTargets,
   weeksToClear,
+  type PepLot,
   type PepTab,
   type Stage,
-  type StageActual,
 } from '../model/pep';
+import { useApp, useDispatch } from '../state/store';
 
 const TABS: PepTab[] = ['matrix', 'tracker', 'capacity'];
 
 export function PepPanel() {
-  const [tab, setTab] = useState<PepTab>('matrix');
+  const state = useApp();
+  const dispatch = useDispatch();
+  const [tab, setTab] = useState<PepTab>('tracker');
   const [stages, setStages] = useState(() => cloneStages());
-  const [actuals, setActuals] = useState(() => emptyActuals());
-  const [targets, setTargets] = useState(12);
-  const start = useMemo(() => programStartDate(PROGRAM_START), []);
-  const baseline = useMemo(() => chainSchedule(STAGES, start), [start]);
+  const [rework, setRework] = useState<Record<string, Record<number, string>>>({});
+  const [targetOverride, setTargetOverride] = useState<number | null>(null);
+
+  const lots = useMemo(
+    () => lotsFromWorkbench(state.plateQueue, state.chains, state.activePlateId, state.plate),
+    [state.plateQueue, state.chains, state.activePlateId, state.plate],
+  );
+  const occupancy = useMemo(() => occupancyByStage(lots), [lots]);
+  const remaining = useMemo(() => remainingTargets(lots), [lots]);
+  const targets = targetOverride ?? remaining;
+  const selected = lots.find((lot) => lot.id === state.activePlateId) ?? lots[0];
+  const startKey = selected?.started ?? '2026-08-20';
+  const start = useMemo(() => parseIsoDate(startKey) ?? new Date(2026, 7, 20), [startKey]);
+  const baseline = useMemo(
+    () => chainSchedule(stages, start),
+    [stages, start],
+  );
+  const actuals = useMemo(
+    () => (selected ? actualsFromLot(selected, stages, rework[selected.id] ?? {}) : {}),
+    [selected, stages, rework],
+  );
   const tracker = useMemo(
-    () => buildTracker(stages, actuals, baseline, start),
-    [stages, actuals, baseline, start],
+    () => (selected ? buildTracker(stages, actuals, baseline, start) : []),
+    [selected, stages, actuals, baseline, start],
   );
   const neck = bottleneck(stages);
   const lead = programDuration(stages);
   const last = tracker[tracker.length - 1];
-  const inProcess = tracker.filter((r) => r.status !== 'not-started').length;
 
   function patchStage(id: number, patch: Partial<Stage>) {
     setStages((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
   }
 
-  function patchActual(id: number, patch: Partial<StageActual>) {
-    setActuals((prev) => ({ ...prev, [id]: { ...prev[id], ...patch } }));
+  function patchRework(stageId: number, delay: string) {
+    if (!selected) return;
+    setRework((prev) => ({
+      ...prev,
+      [selected.id]: { ...prev[selected.id], [stageId]: delay },
+    }));
   }
 
   return (
     <Panel
       title="Protein Expression & Purification — Process Matrix & Time Estimator"
-      tip="PERT durations, live forecast and weekly throughput for construct request through a stored protein lot. The three tabs share one set of stage numbers."
-      trailing={`${fmtDays(lead, 1)} d lead · bottleneck ${neck.stage.id}`}
+      tip="PERT durations, live forecast and weekly throughput for the plates on the cloning bench. The open plate advances as you assemble and register chains."
+      trailing={`${selected ? `${selected.id} · stage ${selected.stageId}` : 'no plate'} · ${remaining} targets left`}
       defaultHeight={360}
     >
       <div className="tabs" role="tablist" aria-label="Expression and purification views">
@@ -72,25 +96,33 @@ export function PepPanel() {
       </div>
 
       {tab === 'matrix' && (
-        <MatrixTab stages={stages} onPatch={patchStage} neckId={neck.stage.id} />
+        <MatrixTab stages={stages} onPatch={patchStage} neckId={neck.stage.id} occupancy={occupancy} />
       )}
-      {tab === 'tracker' && (
+      {tab === 'tracker' && selected && last && (
         <TrackerTab
+          lots={lots}
+          selectedId={selected.id}
+          stages={stages}
           tracker={tracker}
-          onPatch={patchActual}
+          onRework={patchRework}
           baselineFinish={baseline[baseline.length - 1].finish}
           forecastFinish={last.forecastFinish}
-          inProcess={inProcess}
+          onOpenLot={(id) => dispatch({ type: 'open-queue-plate', plateId: id, mode: 'single' })}
         />
       )}
       {tab === 'capacity' && (
         <CapacityTab
           stages={stages}
+          lots={lots}
+          occupancy={occupancy}
           neckId={neck.stage.id}
           neckWeekly={neck.weekly}
           targets={targets}
-          onTargets={setTargets}
+          remaining={remaining}
+          overridden={targetOverride != null}
+          onTargets={setTargetOverride}
           start={start}
+          lead={lead}
         />
       )}
     </Panel>
@@ -101,10 +133,12 @@ function MatrixTab({
   stages,
   onPatch,
   neckId,
+  occupancy,
 }: {
   stages: Stage[];
   onPatch: (id: number, patch: Partial<Stage>) => void;
   neckId: number;
+  occupancy: Record<number, number>;
 }) {
   return (
     <>
@@ -115,6 +149,7 @@ function MatrixTab({
               <th className="pep-sticky">ID</th>
               <th className="pep-sticky-2">Stage</th>
               <th>Actor</th>
+              <th>Load</th>
               <th>Pred.</th>
               <th>Opt.</th>
               <th>Likely</th>
@@ -134,15 +169,17 @@ function MatrixTab({
           <tbody>
             {stages.map((stage) => {
               const c = computeStage(stage, stages);
+              const load = occupancy[stage.id] ?? 0;
               return (
                 <tr
                   key={stage.id}
                   className={stage.id === neckId ? 'pep-bottleneck' : ''}
-                  data-tip={stage.notes}
+                  data-tip={`${stage.notes}${load ? ` ${load} well${load === 1 ? '' : 's'} from the plate queue are here.` : ''}`}
                 >
                   <td className="pep-sticky pep-num">{stage.id}</td>
                   <td className="pep-sticky-2 pep-name">{stage.name}</td>
                   <td className="pep-actor">{stage.actor}</td>
+                  <td className={`pep-num${load ? ' pep-strong' : ''}`}>{load || '—'}</td>
                   <td className="pep-num">{stage.predecessor ?? '—'}</td>
                   <td>
                     <NumInput
@@ -207,44 +244,72 @@ function MatrixTab({
         </table>
       </div>
       <p className="hint">
-        Expected = (optimistic + 4 × most likely + pessimistic) / 6. Effective duration adds the
-        buffer. Hover a row for the notes. Harvest / purify is the expected bottleneck — chromatography
-        skid availability.
+        Load is filled wells from today’s plate queue. The open plate moves as you place parts,
+        assemble constructs and register chains. Harvest / purify remains the cycle-time bottleneck.
       </p>
     </>
   );
 }
 
 function TrackerTab({
+  lots,
+  selectedId,
+  stages,
   tracker,
-  onPatch,
+  onRework,
   baselineFinish,
   forecastFinish,
-  inProcess,
+  onOpenLot,
 }: {
+  lots: PepLot[];
+  selectedId: string;
+  stages: Stage[];
   tracker: ReturnType<typeof buildTracker>;
-  onPatch: (id: number, patch: Partial<StageActual>) => void;
+  onRework: (stageId: number, delay: string) => void;
   baselineFinish: Date;
   forecastFinish: Date;
-  inProcess: number;
+  onOpenLot: (id: string) => void;
 }) {
   const variance = (forecastFinish.getTime() - baselineFinish.getTime()) / 86_400_000;
-  const baselineDays = tracker.reduce((sum, r) => sum + r.baselineDuration, 0);
-  const forecastDays = tracker.reduce((sum, r) => sum + r.forecastDuration, 0);
+  const selected = lots.find((lot) => lot.id === selectedId);
+  const stageName = stages.find((s) => s.id === selected?.stageId)?.name ?? '—';
 
   return (
     <>
+      <div className="pep-lot-list" role="list">
+        {lots.map((lot) => {
+          const stage = stages.find((s) => s.id === lot.stageId);
+          const current = lot.id === selectedId;
+          return (
+            <button
+              key={lot.id}
+              type="button"
+              role="listitem"
+              className={`pep-lot${current ? ' current' : ''}`}
+              data-tip={`${lot.barcode} · ${lot.program} · ${lot.formatLabel}. ${lot.n} wells. ${lot.note} ${current ? 'On the bench — cloning progress updates this row.' : 'Click to open this plate on the bench.'}`}
+              onClick={() => onOpenLot(lot.id)}
+            >
+              <span className="pep-lot-id">{lot.id}</span>
+              <span className="pep-lot-name">{lot.name}</span>
+              <span className="pep-lot-meta">
+                {lot.program} · {lot.n} wells · {lot.operator}
+              </span>
+              <span className="pep-lot-stage">
+                {lot.stageId}. {stage ? shortName(stage.name) : '—'}
+              </span>
+            </button>
+          );
+        })}
+      </div>
       <div className="pep-kpis">
-        <Kpi label="Baseline finish" value={fmtDate(baselineFinish)} />
+        <Kpi label="On bench" value={selected?.name ?? '—'} />
+        <Kpi label="Now at" value={`${selected?.stageId ?? '—'} · ${shortName(stageName)}`} />
         <Kpi label="Forecast finish" value={fmtDate(forecastFinish)} />
         <Kpi
-          label="Variance"
+          label="Variance vs plan"
           value={`${variance >= 0 ? '+' : ''}${fmtDays(variance)} d`}
           tone={variance > 0.05 ? 'warn' : variance < -0.05 ? 'pass' : undefined}
         />
-        <Kpi label="Stages touched" value={`${inProcess} / ${tracker.length}`} />
-        <Kpi label="Baseline span" value={`${fmtDays(baselineDays, 1)} d`} />
-        <Kpi label="Forecast span" value={`${fmtDays(forecastDays, 1)} d`} />
       </div>
       <div className="pep-scroll">
         <table className="pep-table">
@@ -267,7 +332,11 @@ function TrackerTab({
           </thead>
           <tbody>
             {tracker.map((row) => (
-              <tr key={row.stage.id} data-tip={row.stage.notes}>
+              <tr
+                key={row.stage.id}
+                className={row.stage.id === selected?.stageId ? 'pep-bottleneck' : ''}
+                data-tip={row.stage.notes}
+              >
                 <td className="pep-sticky pep-num">{row.stage.id}</td>
                 <td className="pep-sticky-2 pep-name">{row.stage.name}</td>
                 <td>
@@ -276,40 +345,21 @@ function TrackerTab({
                 <td className="pep-date">{fmtDate(row.baselineStart)}</td>
                 <td className="pep-num">{fmtDays(row.baselineDuration)}</td>
                 <td className="pep-date">{fmtDate(row.baselineFinish)}</td>
-                <td>
-                  <input
-                    className="pep-input pep-date-input"
-                    type="date"
-                    value={row.actual.start}
-                    data-tip="Actual start date. Filling this marks the stage in progress and holds the forecast at this day."
-                    onChange={(e) => onPatch(row.stage.id, { start: e.target.value })}
-                  />
-                </td>
-                <td>
-                  <NumInput
-                    value={parseNumber(row.actual.duration)}
-                    allowEmpty
-                    tip="Actual duration in days. Filling this with a start date marks the stage complete."
-                    onChange={(n) =>
-                      onPatch(row.stage.id, { duration: n == null ? '' : String(n) })
-                    }
-                  />
-                </td>
+                <td className="pep-date">{row.actual.start ? fmtDate(parseIsoDate(row.actual.start) ?? row.forecastStart) : '—'}</td>
+                <td className="pep-num">{row.actual.duration ? fmtDays(Number(row.actual.duration)) : '—'}</td>
                 <td>
                   <div className="pep-rework">
                     <NumInput
                       value={parseNumber(row.actual.reworkDelay) ?? 0}
                       tip="Extra days logged when a rework loop is caught at this stage. Shifts every later forecast."
-                      onChange={(n) => onPatch(row.stage.id, { reworkDelay: String(n ?? 0) })}
+                      onChange={(n) => onRework(row.stage.id, String(n ?? 0))}
                     />
                     {row.computed.reworkCost != null && (
                       <button
                         type="button"
                         className="btn ghost pep-apply"
                         data-tip={`Apply the pre-computed rework cost (${fmtDays(row.computed.reworkCost)} d) from the process matrix`}
-                        onClick={() =>
-                          onPatch(row.stage.id, { reworkDelay: String(row.computed.reworkCost) })
-                        }
+                        onClick={() => onRework(row.stage.id, String(row.computed.reworkCost))}
                       >
                         Apply
                       </button>
@@ -320,7 +370,9 @@ function TrackerTab({
                 <td className="pep-num">{fmtDays(row.forecastDuration)}</td>
                 <td className="pep-date">{fmtDate(row.forecastFinish)}</td>
                 <td className={`pep-num${row.varianceD > 0.05 ? ' pep-late' : ''}`}>
-                  {row.varianceD === 0 ? '0' : `${row.varianceD > 0 ? '+' : ''}${fmtDays(row.varianceD)}`}
+                  {row.varianceD === 0
+                    ? '0'
+                    : `${row.varianceD > 0 ? '+' : ''}${fmtDays(row.varianceD)}`}
                 </td>
               </tr>
             ))}
@@ -328,9 +380,9 @@ function TrackerTab({
         </table>
       </div>
       <p className="hint">
-        Baseline is frozen from the opening plan (1 Sep 2026). Forecast uses live matrix durations
-        until you enter actuals. Apply copies the matrix rework cost onto the stage where the
-        failure was caught.
+        Actuals are taken from the plate: completed stages behind the current one, the current stage
+        in progress. Place a VH, choose a backbone or register a chain on the open plate to move it
+        through construct request → glycerol stock.
       </p>
     </>
   );
@@ -338,51 +390,75 @@ function TrackerTab({
 
 function CapacityTab({
   stages,
+  lots,
+  occupancy,
   neckId,
   neckWeekly,
   targets,
+  remaining,
+  overridden,
   onTargets,
   start,
+  lead,
 }: {
   stages: Stage[];
+  lots: PepLot[];
+  occupancy: Record<number, number>;
   neckId: number;
   neckWeekly: number;
   targets: number;
-  onTargets: (n: number) => void;
+  remaining: number;
+  overridden: boolean;
+  onTargets: (n: number | null) => void;
   start: Date;
+  lead: number;
 }) {
   const weeks = weeksToClear(targets, neckWeekly);
   const completion = weeks == null ? null : new Date(start.getTime() + weeks * WORK_MS);
   const maxWeekly = Math.max(...stages.map((s) => computeStage(s, stages).weeklyCapacity));
   const neck = stages.find((s) => s.id === neckId);
+  const programs = new Set(lots.map((lot) => lot.program)).size;
+  const atNeck = occupancy[neckId] ?? 0;
 
   return (
     <>
       <div className="pep-kpis">
-        <label className="pep-kpi" data-tip="How many targets this quarter. Yellow input on the Capacity sheet.">
+        <label
+          className="pep-kpi"
+          data-tip="Filled wells still short of storage. Typed values override the queue until you clear the field."
+        >
           <span>Targets planned</span>
           <input
             className="pep-input pep-targets"
             type="number"
             min={0}
             value={targets}
-            onChange={(e) => onTargets(Number(e.target.value) || 0)}
+            onChange={(e) => {
+              if (e.target.value === '') onTargets(null);
+              else onTargets(Number(e.target.value));
+            }}
           />
         </label>
+        <Kpi label="From queue" value={`${remaining} wells · ${programs} programs`} />
         <Kpi label="Bottleneck" value={neck ? `${neck.id} · ${shortName(neck.name)}` : '—'} tone="warn" />
+        <Kpi label="At bottleneck" value={`${atNeck} wells`} />
         <Kpi label="Bottleneck rate" value={`${fmtDays(neckWeekly, 1)} /wk`} />
-        <Kpi
-          label="Weeks to clear"
-          value={weeks == null ? '—' : fmtDays(weeks, 1)}
-        />
+        <Kpi label="Weeks to clear" value={weeks == null ? '—' : fmtDays(weeks, 1)} />
         <Kpi label="Est. completion" value={completion ? fmtDate(completion) : '—'} />
+        <Kpi label="One-construct lead" value={`${fmtDays(lead, 1)} d`} />
       </div>
+      {overridden && (
+        <p className="hint" style={{ marginTop: 0 }}>
+          Targets planned is an override of the {remaining} wells still in the queue.
+        </p>
+      )}
       <div className="pep-scroll">
         <table className="pep-table">
           <thead>
             <tr>
               <th className="pep-sticky">ID</th>
               <th className="pep-sticky-2">Stage</th>
+              <th>On hand</th>
               <th>Batch</th>
               <th>Cycle (d)</th>
               <th>Weekly throughput</th>
@@ -394,10 +470,12 @@ function CapacityTab({
               const c = computeStage(stage, stages);
               const pct = maxWeekly === 0 ? 0 : (c.weeklyCapacity / maxWeekly) * 100;
               const isNeck = stage.id === neckId;
+              const load = occupancy[stage.id] ?? 0;
               return (
                 <tr key={stage.id} className={isNeck ? 'pep-bottleneck' : ''} data-tip={stage.notes}>
                   <td className="pep-sticky pep-num">{stage.id}</td>
                   <td className="pep-sticky-2 pep-name">{stage.name}</td>
+                  <td className={`pep-num${load ? ' pep-strong' : ''}`}>{load || '—'}</td>
                   <td className="pep-num">{stage.batchCapacity ?? '—'}</td>
                   <td className="pep-num">{fmtDays(c.totalEffective)}</td>
                   <td>
@@ -416,9 +494,9 @@ function CapacityTab({
         </table>
       </div>
       <p className="hint">
-        Weekly throughput = batch × 7 / effective cycle time. Stages without a batch size are treated
-        as unconstrained (500 /wk), so the flag lands on the chromatography skid at harvest / purify
-        rather than on empty human steps.
+        On hand is the same well count as the plate queue, parked at each stage. Weekly throughput =
+        batch × 7 / effective cycle time. Stages without a batch size are unconstrained, so the flag
+        stays on the chromatography skid.
       </p>
     </>
   );

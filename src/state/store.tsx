@@ -28,6 +28,7 @@ import {
   wellRange,
   wellsFilled,
 } from '../model/plate';
+import { resolvedPepStage } from '../model/pep';
 import { initialPlateQueue } from '../model/queue';
 import { runQc } from '../model/qc';
 import { DEFAULT_PALETTE_ID, paletteById } from '../model/palettes';
@@ -295,7 +296,13 @@ function persistActivePlate(state: AppState): AppState {
   return {
     ...state,
     plateQueue: state.plateQueue.map((p) =>
-      p.id === state.activePlateId ? { ...p, wells: state.plate } : p,
+      p.id === state.activePlateId
+        ? {
+            ...p,
+            wells: state.plate,
+            pepStage: resolvedPepStage(p, state.plate, state.chains, true),
+          }
+        : p,
     ),
   };
 }

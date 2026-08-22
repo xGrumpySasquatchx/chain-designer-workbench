@@ -4,6 +4,9 @@
  * sheet uses so the three tabs stay in lockstep.
  */
 
+import { uniqueChainIds } from './plate';
+import type { ChainDesign, PlateWell, QueuedPlate } from './types';
+
 export const PROGRAM_START = '2026-09-01';
 /** Sentinel weekly capacity when a stage has no batch limit (Process Matrix col M). */
 export const UNCONSTRAINED_WEEKLY = 500;
@@ -421,6 +424,140 @@ export function fmtDate(d: Date): string {
   return `${date} ${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
 }
 
+export interface PepLot {
+  id: string;
+  barcode: string;
+  name: string;
+  program: string;
+  operator: string;
+  formatLabel: string;
+  note: string;
+  n: number;
+  stageId: number;
+  lumaUid: string;
+  started: string;
+}
+
+/**
+ * Map a bench chain onto the cloning half of the process matrix. Registration
+ * is glycerol stock; a CC-id is clone confirmation; a vector is cloning;
+ * any placed part is sequence design.
+ */
+export function chainPepStage(chain: ChainDesign | undefined): number {
+  if (!chain) return 1;
+  if (chain.regIds.length) return 10;
+  if (chain.constructIds.length) return 9;
+  if (chain.vectorId) return 6;
+  if (chain.slots.some((s) => s.blockIds.length > 0)) return 3;
+  return 1;
+}
+
+export function cloningStage(wells: PlateWell[], chains: Record<string, ChainDesign>): number {
+  const ids = uniqueChainIds(wells.filter((w) => w.chainIds.length > 0));
+  if (!ids.length) return 1;
+  return Math.min(...ids.map((id) => chainPepStage(chains[id])));
+}
+
+/**
+ * Score a plate. The open bench plate follows live chain progress so assembling
+ * and registering advance the tracker; queued expression jobs keep their stage
+ * rather than being pulled back by shared draft chains.
+ */
+export function resolvedPepStage(
+  plate: QueuedPlate,
+  wells: PlateWell[],
+  chains: Record<string, ChainDesign>,
+  isLive: boolean,
+): number {
+  if (plate.status === 'done') return Math.max(plate.pepStage, 14);
+  if (!isLive) return plate.pepStage;
+  const live = cloningStage(wells, chains);
+  if (plate.pepStage >= 11) return plate.pepStage;
+  if (live >= 10) return Math.max(11, plate.pepStage);
+  return live;
+}
+
+export function plateStartDate(barcode: string): string {
+  const match = /-(20\d{2})-(\d{2})(\d{2})-/.exec(barcode);
+  if (!match) return PROGRAM_START;
+  return `${match[1]}-${match[2]}-${match[3]}`;
+}
+
+export function lotsFromWorkbench(
+  plates: QueuedPlate[],
+  chains: Record<string, ChainDesign>,
+  activePlateId: string,
+  liveWells: PlateWell[],
+): PepLot[] {
+  return plates.map((plate) => {
+    const wells = plate.id === activePlateId ? liveWells : plate.wells;
+    const filled = wells.filter((w) => w.chainIds.length > 0);
+    const isLive = plate.id === activePlateId;
+    return {
+      id: plate.id,
+      barcode: plate.barcode,
+      name: plate.name,
+      program: plate.program,
+      operator: plate.operator,
+      formatLabel: plate.formatLabel,
+      note: plate.note,
+      n: filled.length,
+      stageId: resolvedPepStage(plate, wells, chains, isLive),
+      lumaUid: filled[0]?.lumaUid ?? '',
+      started: plateStartDate(plate.barcode),
+    };
+  });
+}
+
+export function occupancyByStage(lots: PepLot[]): Record<number, number> {
+  const out: Record<number, number> = {};
+  for (const lot of lots) {
+    out[lot.stageId] = (out[lot.stageId] ?? 0) + lot.n;
+  }
+  return out;
+}
+
+export function remainingTargets(lots: PepLot[]): number {
+  return lots.filter((lot) => lot.stageId < 15).reduce((sum, lot) => sum + lot.n, 0);
+}
+
+export function actualsFromLot(
+  lot: PepLot,
+  stages: Stage[],
+  rework: Record<number, string>,
+): Record<number, StageActual> {
+  const start = parseIsoDate(lot.started) ?? programStartDate(lot.started);
+  const schedule = chainSchedule(stages, start);
+  const done = lot.stageId >= 15;
+  const actuals: Record<number, StageActual> = {};
+  stages.forEach((stage, i) => {
+    const delay = rework[stage.id] ?? '0';
+    if (done || stage.id < lot.stageId) {
+      actuals[stage.id] = {
+        start: isoDate(schedule[i].start),
+        duration: String(totalEffective(stage)),
+        reworkDelay: delay,
+      };
+    } else if (stage.id === lot.stageId) {
+      actuals[stage.id] = {
+        start: isoDate(schedule[i].start),
+        duration: '',
+        reworkDelay: delay,
+      };
+    } else {
+      actuals[stage.id] = { start: '', duration: '', reworkDelay: delay };
+    }
+  });
+  return actuals;
+}
+
+function isoDate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 export const STATUS_LABEL: Record<StageStatus, string> = {
   'not-started': 'Not started',
   'in-progress': 'In progress',
@@ -435,9 +572,9 @@ export const TAB_LABEL: Record<PepTab, string> = {
 
 export const TAB_TIP: Record<PepTab, string> = {
   matrix:
-    'One row per pipeline stage. Three-point PERT durations, scheduling buffer, batch capacity and rework. Blue cells are inputs.',
+    'One row per pipeline stage. Load is filled wells from the plate queue sitting at that stage. Blue cells are inputs.',
   tracker:
-    'One program instance. Enter actual start and duration as stages complete; forecast and variance vs baseline recompute downstream.',
+    'One row per plate in today’s queue. The open plate follows live cloning progress; the others keep the stage the queue assigned them.',
   capacity:
-    'Weekly throughput from batch size and cycle time. The lowest bounded stage is the bottleneck that gates how fast a queue of targets clears.',
+    'Weekly throughput from batch size and cycle time. Targets planned track remaining wells on plates that have not reached storage.',
 };
