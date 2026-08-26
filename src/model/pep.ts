@@ -12,7 +12,7 @@ export const PROGRAM_START = '2026-09-01';
 export const UNCONSTRAINED_WEEKLY = 500;
 export const WORK_DAYS_PER_WEEK = 7;
 
-export type PepTab = 'matrix' | 'tracker' | 'capacity';
+export type PepTab = 'matrix' | 'tracker' | 'capacity' | 'forecast';
 export type StageStatus = 'not-started' | 'in-progress' | 'complete';
 
 export interface Stage {
@@ -568,6 +568,7 @@ export const TAB_LABEL: Record<PepTab, string> = {
   matrix: 'Process Matrix',
   tracker: 'Live Tracker',
   capacity: 'Capacity',
+  forecast: 'Forecast',
 };
 
 export const TAB_TIP: Record<PepTab, string> = {
@@ -577,4 +578,6 @@ export const TAB_TIP: Record<PepTab, string> = {
     'One row per plate in today’s queue. The open plate follows live cloning progress; the others keep the stage the queue assigned them.',
   capacity:
     'Weekly throughput from batch size and cycle time. Targets planned track remaining wells on plates that have not reached storage.',
+  forecast:
+    'Impact preview before you commit new work. Queue wait is nonlinear in utilization; batch spill is a step. Hover any control — the tips teach the model.',
 };

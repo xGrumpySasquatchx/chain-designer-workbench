@@ -2219,3 +2219,280 @@ body.resizing-v .panel-grip::after {
 .pep-bar.hot > span {
   background: var(--text-warning);
 }
+
+/* ---------- capacity forecast engine ---------- */
+
+.fc {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+
+.fc-prompt {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  background: var(--bg-accent);
+  border: 0.5px solid var(--border-accent);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+}
+
+.fc-warn {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-danger);
+  background: var(--bg-danger);
+  border: 0.5px solid var(--border-danger);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+}
+
+.fc-ribbon {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 56px;
+  padding: 4px 6px 0;
+  background: var(--surface-1);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.fc-tick {
+  position: relative;
+  flex: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.fc-tick-bar {
+  width: 70%;
+  min-height: 2px;
+  background: var(--fill-accent);
+  border-radius: 2px 2px 0 0;
+}
+
+.fc-tick.hot .fc-tick-bar {
+  background: var(--text-danger);
+}
+
+.fc-tick.bind .fc-tick-bar {
+  background: var(--text-warning);
+}
+
+.fc-tick-ceil {
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  height: 1px;
+  background: var(--text-primary);
+  opacity: 0.35;
+}
+
+.fc-tick-id {
+  font-size: 9px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.fc-propose {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.fc-propose label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 10px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.fc-propose .pep-input {
+  min-width: 120px;
+  margin: 0;
+}
+
+.fc-banner {
+  font-size: 12px;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  border: 0.5px solid var(--border);
+}
+
+.fc-banner.fits_within_slack {
+  background: var(--bg-pass);
+  border-color: var(--border-pass);
+  color: var(--text-pass);
+}
+
+.fc-banner.breaches_ceiling {
+  background: var(--bg-warning);
+  border-color: var(--border-warning);
+  color: var(--text-warning);
+}
+
+.fc-banner.infeasible {
+  background: var(--bg-danger);
+  border-color: var(--border-danger);
+  color: var(--text-danger);
+}
+
+.fc-bind {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 0.5px solid var(--border-warning);
+  background: var(--bg-warning);
+  border-radius: var(--radius);
+  font-size: 12px;
+}
+
+.fc-bind strong {
+  font-weight: 300;
+}
+
+.fc-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fc-bar {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1.4fr) minmax(80px, 2fr) 88px;
+  gap: 8px;
+  align-items: center;
+  font-size: 11px;
+}
+
+.fc-bar-id {
+  color: var(--text-muted);
+}
+
+.fc-bar-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fc-track {
+  position: relative;
+  height: 10px;
+  background: var(--surface-0);
+  border: 0.5px solid var(--border);
+  border-radius: 99px;
+  overflow: hidden;
+}
+
+.fc-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+
+.fc-fill.before {
+  left: 0;
+  background: var(--fill-accent);
+  opacity: 0.45;
+}
+
+.fc-fill.delta {
+  background: var(--fill-accent);
+}
+
+.fc-bar.breach .fc-fill.delta,
+.fc-bar.infeasible .fc-fill.delta {
+  background: var(--text-danger);
+}
+
+.fc-ceil {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 1px;
+  background: var(--text-primary);
+}
+
+.fc-bar-rho {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  text-align: right;
+}
+
+.fc-slips,
+.fc-shadow,
+.fc-levers {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fc-slip-h {
+  margin: 0;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.fc-slip {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 11.5px;
+  padding: 4px 0;
+  border-bottom: 0.5px solid var(--border);
+}
+
+.fc-lever {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  text-align: left;
+  padding: 8px 10px;
+  border: 0.5px solid var(--border);
+  background: var(--surface-2);
+  border-radius: var(--radius);
+  cursor: pointer;
+  color: inherit;
+}
+
+.fc-lever:hover,
+.fc-lever.on {
+  border-color: var(--border-accent);
+  background: var(--bg-accent);
+}
+
+.fc-lever strong {
+  font-weight: 300;
+  font-size: 12px;
+}
+
+.fc-lever-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.fc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.fc-cal {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+}

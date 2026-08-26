@@ -60,6 +60,13 @@ import {
   weeklyCapacity,
   weeksToClear,
 } from '../src/model/pep';
+import { batchCycles } from '../src/planning/forecast/model/batching';
+import { endToEndYield, expandDemand } from '../src/planning/forecast/model/demandExpansion';
+import { referenceProcessModel, yieldOnlyTemplate } from '../src/planning/forecast/model/ProcessModel';
+import { uniformDemandShock } from '../src/planning/forecast/engines/impact';
+import { forecastImpact } from '../src/planning/forecast/engines/analytical';
+import { rankLevers } from '../src/planning/forecast/levers/rank';
+import { newCandidate } from '../src/planning/forecast/workbench';
 import { createInitialState, reducer, type Action, type AppState } from '../src/state/store';
 
 let failures = 0;
@@ -920,6 +927,89 @@ check(
   'filling both empty A1 arms advances the open plate to sequence design',
   cloningStage(afterVh.plate, afterVh.chains) === 3 &&
     advanced.find((l) => l.id === 'PLT-0001')?.stageId === 3,
+);
+
+console.log('\n— capacity forecast engine —');
+const yieldTemplate = yieldOnlyTemplate();
+const y = endToEndYield(yieldTemplate);
+const designed48 = expandDemand(yieldTemplate, 48).get(1) ?? 0;
+check('end-to-end yield on the §6 spine is 41%', Math.abs(y - 0.41) < 0.01, y.toFixed(3));
+check(
+  'a request for 48 outputs expands to 117 ± 2 designed constructs',
+  Math.abs(designed48 - 117) <= 2,
+  designed48.toFixed(1),
+);
+check(
+  '20 constructs into 34 open wells add zero new batch cycles',
+  batchCycles(20, 96, 34).newCycles === 0 && batchCycles(20, 96, 34).absorbedUnits === 20,
+);
+check(
+  '1 construct with 0 open wells adds exactly one batch cycle',
+  batchCycles(1, 96, 0).newCycles === 1 && batchCycles(1, 96, 0).absorbedUnits === 0,
+);
+
+const SHOCK = [
+  [1, 3.86, 5.03],
+  [2, 0.11, 0.12],
+  [3, 15.0, 17.93],
+  [4, 3.55, 5.05],
+  [5, 1.55, 1.92],
+  [6, 3.5, 4.48],
+  [7, 1.99, 2.67],
+  [8, 4.45, 5.63],
+  [9, 0.85, 1.03],
+  [10, 34.0, 60.3],
+  [11, 0.69, 0.82],
+  [12, 1.31, 1.57],
+  [13, 0.86, 1.0],
+  [14, 0.54, 0.63],
+  [15, 3.67, 4.74],
+] as const;
+const shockModel = referenceProcessModel();
+const shocked = uniformDemandShock(shockModel, 1.07);
+const within2 = SHOCK.every(([id, before, after]) => {
+  const row = shocked.find((s) => s.stageIndex === id);
+  if (!row) return false;
+  const ok = (got: number, exp: number) => Math.abs(got - exp) <= Math.max(exp * 0.02, 0.03);
+  return ok(row.waitDaysBefore, before) && ok(row.waitDaysAfter, after);
+});
+check('uniform +7% demand reproduces the §6.1 wait table within 2%', within2);
+const expr = shocked.find((s) => s.stageIndex === 10)!;
+const shockDelta = shocked.reduce((sum, s) => sum + s.deltaDays, 0);
+check(
+  'expression is 71% of the added delay',
+  Math.abs(expr.deltaDays / shockDelta - 0.71) < 0.03,
+  `${((expr.deltaDays / shockDelta) * 100).toFixed(1)}%`,
+);
+
+const forty = Array.from({ length: 40 }, (_, i) =>
+  newCandidate({ id: `PRJ-${i}`, variantCount: 8, status: 'committed', formatCode: 'mAb' }),
+);
+const t0 = performance.now();
+const preview = forecastImpact(shockModel, forty, newCandidate({ variantCount: 12, consolidate: false }), {});
+const elapsed = performance.now() - t0;
+check('analytical forecast returns in under 20 ms for 40 booked items', elapsed < 20, `${elapsed.toFixed(1)} ms`);
+check(
+  'ρ ≥ 1 is reported as infeasible and suppresses a finite wait',
+  preview.stages.every((s) => !s.infeasible || !Number.isFinite(s.waitDaysAfter)),
+);
+
+const open = { 4: 34, 5: 34, 10: 8 };
+const levers = rankLevers(
+  shockModel,
+  forty,
+  newCandidate({ variantCount: 20, consolidate: false }),
+  open,
+);
+check(
+  'batch_consolidate ranks first when open wells exist and scope cost is 0',
+  levers[0]?.kind === 'batch_consolidate' && levers[0].scopeCostPct === 0,
+  levers[0]?.kind ?? 'none',
+);
+const applied = levers[0]?.apply();
+check(
+  'lever apply is pure — consolidate flag is the only planning change',
+  applied?.consolidate === true && applied.variantCount === 20,
 );
 
 console.log(`\n${failures === 0 ? 'All checks passed.' : `${failures} check(s) failed.`}`);

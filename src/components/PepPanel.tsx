@@ -23,9 +23,12 @@ import {
   type PepTab,
   type Stage,
 } from '../model/pep';
+import { ForecastTab } from '../planning/forecast/ui/ForecastTab';
+import { referenceProcessModel } from '../planning/forecast/model/ProcessModel';
+import { openCapacityFromOccupancy, workItemsFromLots } from '../planning/forecast/workbench';
 import { useApp, useDispatch } from '../state/store';
 
-const TABS: PepTab[] = ['matrix', 'tracker', 'capacity'];
+const TABS: PepTab[] = ['matrix', 'tracker', 'capacity', 'forecast'];
 
 export function PepPanel() {
   const state = useApp();
@@ -41,6 +44,12 @@ export function PepPanel() {
   );
   const occupancy = useMemo(() => occupancyByStage(lots), [lots]);
   const remaining = useMemo(() => remainingTargets(lots), [lots]);
+  const forecastModel = useMemo(() => referenceProcessModel(), []);
+  const forecastBaseline = useMemo(() => workItemsFromLots(lots), [lots]);
+  const forecastOpen = useMemo(
+    () => openCapacityFromOccupancy(occupancy, forecastModel),
+    [occupancy, forecastModel],
+  );
   const targets = targetOverride ?? remaining;
   const selected = lots.find((lot) => lot.id === state.activePlateId) ?? lots[0];
   const startKey = selected?.started ?? '2026-08-20';
@@ -125,6 +134,9 @@ export function PepPanel() {
           lead={lead}
         />
       )}
+      <div hidden={tab !== 'forecast'}>
+        <ForecastTab model={forecastModel} baseline={forecastBaseline} openCapacity={forecastOpen} />
+      </div>
     </Panel>
   );
 }
