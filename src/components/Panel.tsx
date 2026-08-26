@@ -9,6 +9,9 @@ import { TooltipLayer } from './Tooltip';
  * - a bottom edge that drags to set the panel's height (double-click to fit),
  * - a pop-out control that moves the panel into its own window, falling back to
  *   a full-screen sheet when the browser blocks the window.
+ *
+ * The popped-out view is the same panel chrome and stylesheet as the in-layout
+ * panel, not a separate modal look.
  */
 
 interface PanelProps {
@@ -27,6 +30,38 @@ interface PanelProps {
 }
 
 const MIN_HEIGHT = 120;
+const STYLE_MARK = 'data-msab-style';
+
+interface ChromeProps {
+  title: string;
+  trailing?: ReactNode;
+  afterTitle?: ReactNode;
+  tip: string;
+  popped: boolean;
+  onToggle: () => void;
+}
+
+function PanelChrome({ title, trailing, afterTitle, tip, popped, onToggle }: ChromeProps) {
+  return (
+    <div className="panel-head">
+      <span className="panel-title" data-tip={tip}>
+        {title}
+      </span>
+      {afterTitle}
+      {trailing !== undefined && <span className="count">{trailing}</span>}
+      <button
+        className="panel-btn"
+        data-tip={
+          popped ? 'Bring this panel back into the layout' : `Open ${title} in its own window`
+        }
+        aria-label={popped ? `Return ${title}` : `Pop out ${title}`}
+        onClick={onToggle}
+      >
+        {popped ? '⤡' : '⤢'}
+      </button>
+    </div>
+  );
+}
 
 export function Panel({
   title,
@@ -61,25 +96,14 @@ export function Panel({
     window.addEventListener('pointerup', up);
   }
 
-  const head = (
-    <div className="panel-head">
-      <span className="panel-title" data-tip={tip}>
-        {title}
-      </span>
-      {afterTitle}
-      {trailing !== undefined && <span className="count">{trailing}</span>}
-      <button
-        className="panel-btn"
-        data-tip={
-          popped ? 'Bring this panel back into the layout' : `Open ${title} in its own window`
-        }
-        aria-label={popped ? `Return ${title}` : `Pop out ${title}`}
-        onClick={() => setPopped(popped ? null : 'window')}
-      >
-        {popped ? '⤡' : '⤢'}
-      </button>
-    </div>
-  );
+  const chromeProps: ChromeProps = {
+    title,
+    trailing,
+    afterTitle,
+    tip,
+    popped: !!popped,
+    onToggle: () => setPopped(popped ? null : 'window'),
+  };
 
   const detached = (
     <div className="panel-detached">
@@ -104,10 +128,8 @@ export function Panel({
       style={height ? { height } : undefined}
       onDragEnd={onDragEnd}
     >
-      {head}
-      {/* The sheet is modal over this panel, so only a real second window
-          replaces the body with a stub. */}
-      {popped === 'window' ? detached : <div className="panel-body">{children}</div>}
+      <PanelChrome {...chromeProps} />
+      {popped ? detached : <div className="panel-body">{children}</div>}
 
       <div
         className="panel-grip"
@@ -119,6 +141,9 @@ export function Panel({
       {popped === 'window' && (
         <PopOutWindow
           title={title}
+          trailing={trailing}
+          afterTitle={afterTitle}
+          tip={tip}
           onClose={() => setPopped(null)}
           onBlocked={() => setPopped('sheet')}
         >
@@ -127,19 +152,10 @@ export function Panel({
       )}
 
       {popped === 'sheet' && (
-        <div className="overlay" onClick={() => setPopped(null)}>
-          <div className="sheet" onClick={(e) => e.stopPropagation()}>
-            <div className="sheet-header">
-              <h2>{title}</h2>
-              <span style={{ marginLeft: 'auto' }} />
-              <span className="hint" style={{ margin: 0 }}>
-                Your browser blocked the pop-out window
-              </span>
-              <button className="btn" onClick={() => setPopped(null)}>
-                Close
-              </button>
-            </div>
-            <div className="sheet-body wide">{children}</div>
+        <div className="overlay popout-overlay" onClick={() => setPopped(null)}>
+          <div className="panel popout-panel" onClick={(e) => e.stopPropagation()}>
+            <PanelChrome {...chromeProps} />
+            <div className="panel-body">{children}</div>
           </div>
         </div>
       )}
@@ -149,16 +165,27 @@ export function Panel({
 
 interface PopOutProps {
   title: string;
+  trailing?: ReactNode;
+  afterTitle?: ReactNode;
+  tip: string;
   onClose: () => void;
   onBlocked: () => void;
   children: ReactNode;
 }
 
 /**
- * A real second window. Stylesheets are copied across with absolute URLs so the
- * panel looks the same there, and closing the window returns the panel.
+ * A real second window. Styles, fonts and the Luma tokens are mirrored from the
+ * app document so the panel is the same UI, not a browser-default page.
  */
-function PopOutWindow({ title, onClose, onBlocked, children }: PopOutProps) {
+function PopOutWindow({
+  title,
+  trailing,
+  afterTitle,
+  tip,
+  onClose,
+  onBlocked,
+  children,
+}: PopOutProps) {
   const [host, setHost] = useState<HTMLElement | null>(null);
   const close = useRef(onClose);
   const blocked = useRef(onBlocked);
@@ -190,17 +217,7 @@ function PopOutWindow({ title, onClose, onBlocked, children }: PopOutProps) {
       if (!doc?.body) return;
 
       doc.title = `${title} — Protein Chain Designer`;
-      if (!doc.head.querySelector('[data-msab-style]')) {
-        document.querySelectorAll('style, link[rel="stylesheet"]').forEach((node) => {
-          const copy = node.cloneNode(true) as HTMLElement;
-          // about:blank cannot resolve the relative href the app was served with.
-          if (node instanceof HTMLLinkElement && copy instanceof HTMLLinkElement) {
-            copy.href = node.href;
-          }
-          copy.setAttribute('data-msab-style', '');
-          doc.head.appendChild(copy);
-        });
-      }
+      paintPopoutDocument(document, doc);
 
       if (!mount || !mount.isConnected) {
         mount = mount ?? doc.createElement('div');
@@ -212,6 +229,11 @@ function PopOutWindow({ title, onClose, onBlocked, children }: PopOutProps) {
 
     attach();
     win.addEventListener('load', attach);
+
+    const observer = new MutationObserver(() => {
+      if (!disposed && win.document.head) paintPopoutDocument(document, win.document);
+    });
+    observer.observe(document.head, { childList: true, subtree: true });
 
     /**
      * Some hosts — Electron shells and embedded IDE browsers among them — turn
@@ -238,6 +260,7 @@ function PopOutWindow({ title, onClose, onBlocked, children }: PopOutProps) {
 
     return () => {
       disposed = true;
+      observer.disconnect();
       window.clearTimeout(settle);
       win.removeEventListener('load', attach);
       win.removeEventListener('pagehide', onUnload);
@@ -250,13 +273,86 @@ function PopOutWindow({ title, onClose, onBlocked, children }: PopOutProps) {
   return createPortal(
     <>
       <div className="panel popout-panel">
-        <div className="panel-head">
-          <span className="panel-title">{title}</span>
-        </div>
+        <PanelChrome
+          title={title}
+          trailing={trailing}
+          afterTitle={afterTitle}
+          tip={tip}
+          popped
+          onToggle={onClose}
+        />
         <div className="panel-body">{children}</div>
       </div>
       <TooltipLayer doc={host.ownerDocument} />
     </>,
     host,
   );
+}
+
+/**
+ * Cross-document cloneNode often yields empty <style> tags in Chromium, so the
+ * pop-out would fall back to the browser's default type. importNode + rewriting
+ * textContent, absolute stylesheet hrefs, and the live :root tokens keep the
+ * popped document on the same design system as the workbench.
+ */
+function paintPopoutDocument(source: Document, target: Document) {
+  const head = target.head;
+  const html = target.documentElement;
+  if (!head || !target.body) return;
+
+  html.lang = source.documentElement.lang || 'en';
+  html.style.colorScheme = 'light';
+
+  const tokens = getComputedStyle(source.documentElement);
+  for (const name of Array.from(tokens)) {
+    if (name.startsWith('--')) html.style.setProperty(name, tokens.getPropertyValue(name));
+  }
+
+  const body = getComputedStyle(source.body);
+  target.body.style.margin = '0';
+  target.body.style.background = body.backgroundColor;
+  target.body.style.color = body.color;
+  target.body.style.fontFamily = body.fontFamily;
+  target.body.style.fontSize = body.fontSize;
+  target.body.style.fontWeight = body.fontWeight;
+  target.body.style.lineHeight = body.lineHeight;
+  target.body.style.setProperty('-webkit-font-smoothing', 'antialiased');
+
+  if (!head.querySelector(`meta[${STYLE_MARK}]`)) {
+    const meta = target.createElement('meta');
+    meta.setAttribute('name', 'color-scheme');
+    meta.setAttribute('content', 'light');
+    meta.setAttribute(STYLE_MARK, '');
+    head.appendChild(meta);
+  }
+
+  head.querySelectorAll(`style[${STYLE_MARK}], link[${STYLE_MARK}]`).forEach((node) => node.remove());
+
+  source
+    .querySelectorAll('link[rel="preconnect"], link[rel="stylesheet"], style')
+    .forEach((node) => {
+      const copy = target.importNode(node, true) as HTMLElement;
+      copy.setAttribute(STYLE_MARK, '');
+      if (node instanceof HTMLLinkElement && copy instanceof HTMLLinkElement) {
+        copy.href = node.href;
+        if (node.crossOrigin) copy.crossOrigin = node.crossOrigin;
+      }
+      if (node instanceof HTMLStyleElement && copy instanceof HTMLStyleElement) {
+        copy.textContent = node.textContent;
+      }
+      head.appendChild(copy);
+    });
+
+  for (const sheet of source.adoptedStyleSheets) {
+    try {
+      const style = target.createElement('style');
+      style.setAttribute(STYLE_MARK, '');
+      style.textContent = Array.from(sheet.cssRules)
+        .map((rule) => rule.cssText)
+        .join('\n');
+      head.appendChild(style);
+    } catch {
+      /* constructed sheets from another origin cannot be read */
+    }
+  }
 }

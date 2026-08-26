@@ -16,6 +16,7 @@ export function PaletteSelect({
 
   useEffect(() => {
     if (!open) return;
+    const view = (rootRef.current?.ownerDocument ?? document).defaultView ?? window;
     const place = () => {
       const box = triggerRef.current?.getBoundingClientRect();
       if (!box) return;
@@ -32,13 +33,13 @@ export function PaletteSelect({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false);
     };
-    window.addEventListener('pointerdown', onPointer);
-    window.addEventListener('keydown', onKey);
-    window.addEventListener('resize', place);
+    view.addEventListener('pointerdown', onPointer);
+    view.addEventListener('keydown', onKey);
+    view.addEventListener('resize', place);
     return () => {
-      window.removeEventListener('pointerdown', onPointer);
-      window.removeEventListener('keydown', onKey);
-      window.removeEventListener('resize', place);
+      view.removeEventListener('pointerdown', onPointer);
+      view.removeEventListener('keydown', onKey);
+      view.removeEventListener('resize', place);
     };
   }, [open]);
 
