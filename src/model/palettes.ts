@@ -1,5 +1,5 @@
 /**
- * Preset well palettes. Each row is nine swatches; molecule elements take
+ * Preset well palettes. Each row is six swatches; molecule elements take
  * colours in plate order, wrapping if needed.
  */
 export interface ColorPalette {
@@ -10,98 +10,43 @@ export interface ColorPalette {
 
 export const PLATE_PALETTES: readonly ColorPalette[] = [
   {
-    id: 'magenta-dream',
-    name: 'Magenta Dream',
-    colors: [
-      '#B7094C',
-      '#A01A58',
-      '#892B64',
-      '#723C70',
-      '#5C4D7D',
-      '#455E89',
-      '#2E6F95',
-      '#1780A1',
-      '#0091AD',
-    ],
+    id: 'sunset-harbor',
+    name: 'Sunset Harbor',
+    colors: ['#DD5571', '#E99272', '#F8D377', '#62D3A4', '#3F88AE', '#193A4B'],
   },
   {
-    id: 'golden-sunrise',
-    name: 'Golden Sunrise Escape',
-    colors: [
-      '#F7CA45',
-      '#E99E47',
-      '#DD7261',
-      '#9D5E5C',
-      '#5D4A59',
-      '#56757F',
-      '#58A1A4',
-      '#8BB96B',
-      '#C5D149',
-    ],
+    id: 'neon-carnival',
+    name: 'Neon Carnival',
+    colors: ['#56BBF8', '#FADE4B', '#EF8432', '#EA336E', '#BFFD50', '#8318F5'],
+  },
+  {
+    id: 'terracotta-tide',
+    name: 'Terracotta Tide',
+    colors: ['#E4786D', '#F4B6B0', '#FDF5F2', '#4695A4', '#2B5F6A', '#F6C561'],
+  },
+  {
+    id: 'festival-market',
+    name: 'Festival Market',
+    colors: ['#EC6564', '#F1985B', '#F7CC59', '#98C848', '#3E80BF', '#664D8F'],
   },
   {
     id: 'forest-hiking',
-    name: 'Forest Hiking Adventure',
-    colors: [
-      '#2E4552',
-      '#3E7171',
-      '#509B8F',
-      '#92B082',
-      '#E3C677',
-      '#E6B672',
-      '#E8A66C',
-      '#E18E63',
-      '#D87659',
-    ],
+    name: 'Forest Hiking',
+    colors: ['#2E4552', '#509B8F', '#92B082', '#E3C677', '#E8A66C', '#D87659'],
   },
   {
-    id: 'ocean-blue',
-    name: 'Ocean Blue Serenity',
-    colors: [
-      '#03045E',
-      '#023E8A',
-      '#0077B6',
-      '#0096C7',
-      '#00B4D8',
-      '#48CAE4',
-      '#90E0EF',
-      '#ADE8F4',
-      '#CAF0F8',
-    ],
+    id: 'twilight-meadow',
+    name: 'Twilight Meadow',
+    colors: ['#6667A7', '#E38FAC', '#DA6F5F', '#EA9463', '#ECC870', '#97C191'],
   },
   {
-    id: 'earthy-boho',
-    name: 'Earthy Boho Delight',
-    colors: [
-      '#7A7D65',
-      '#9B9B7E',
-      '#D2B098',
-      '#E0C6A3',
-      '#EEDDAD',
-      '#F7CD79',
-      '#C68F67',
-      '#AE8668',
-      '#947C69',
-    ],
-  },
-  {
-    id: 'dreamy-pastel',
-    name: 'Dreamy Pastel Clouds',
-    colors: [
-      '#ACDBFC',
-      '#A8C6FA',
-      '#C5B7FA',
-      '#D3BCFA',
-      '#E1C1FB',
-      '#F0C6FC',
-      '#F7D0FC',
-      '#F9DBFD',
-      '#FFD9FF',
-    ],
+    id: 'dusky-clay',
+    name: 'Dusky Clay',
+    colors: ['#3B506E', '#6A5A78', '#AA6977', '#D67272', '#DB9181', '#E1AF90'],
   },
 ];
 
-export const DEFAULT_PALETTE_ID = 'magenta-dream';
+export const DEFAULT_PALETTE_ID = 'sunset-harbor';
 
 export function paletteById(id: string): ColorPalette {
   return PLATE_PALETTES.find((p) => p.id === id) ?? PLATE_PALETTES[0];
