@@ -4,9 +4,11 @@ import { PLATE_PALETTES, paletteById, type ColorPalette } from '../model/palette
 export function PaletteSelect({
   value,
   onChange,
+  align = 'start',
 }: {
   value: string;
   onChange: (paletteId: string) => void;
+  align?: 'start' | 'end';
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -20,11 +22,11 @@ export function PaletteSelect({
     const place = () => {
       const box = triggerRef.current?.getBoundingClientRect();
       if (!box) return;
-      setMenuStyle({
-        position: 'fixed',
-        top: box.bottom + 4,
-        left: box.left,
-      });
+      setMenuStyle(
+        align === 'end'
+          ? { position: 'fixed', top: box.bottom + 4, right: view.innerWidth - box.right, left: 'auto' }
+          : { position: 'fixed', top: box.bottom + 4, left: box.left },
+      );
     };
     place();
     const onPointer = (e: PointerEvent) => {
@@ -41,7 +43,7 @@ export function PaletteSelect({
       view.removeEventListener('keydown', onKey);
       view.removeEventListener('resize', place);
     };
-  }, [open]);
+  }, [open, align]);
 
   return (
     <div className={`palette-select${open ? ' open' : ''}`} ref={rootRef}>

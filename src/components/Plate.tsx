@@ -114,37 +114,46 @@ export function Plate() {
           >
             {many ? `${openPlates.map((p) => p.id).join(' · ')}` : current ? `${current.id} · ${trailing}` : trailing}
           </span>
-          <span className="plate-zoom" role="group" aria-label="Plate zoom">
-            <button
-              type="button"
-              className="plate-tool"
-              data-tip={`Zoom out (${MIN_ZOOM_PCT}–${MAX_ZOOM_PCT}%)`}
-              disabled={pct <= MIN_ZOOM_PCT}
-              onClick={() => setZoomPct(pct - ZOOM_STEP)}
-            >
-              −
-            </button>
-            <button
-              type="button"
-              className="plate-zoom-pct"
-              data-tip={`Reset zoom to ${START_ZOOM_PCT}%`}
-              onClick={() => setZoomPct(START_ZOOM_PCT)}
-            >
-              {pct}%
-            </button>
-            <button
-              type="button"
-              className="plate-tool"
-              data-tip={`Zoom in (${MIN_ZOOM_PCT}–${MAX_ZOOM_PCT}%)`}
-              disabled={pct >= MAX_ZOOM_PCT}
-              onClick={() => setZoomPct(pct + ZOOM_STEP)}
-            >
-              +
-            </button>
+          <span className="plate-tools">
+            <span className="plate-zoom-row">
+              <span className="plate-zoom" role="group" aria-label="Plate zoom">
+                <button
+                  type="button"
+                  className="plate-tool"
+                  data-tip={`Zoom out (${MIN_ZOOM_PCT}–${MAX_ZOOM_PCT}%)`}
+                  disabled={pct <= MIN_ZOOM_PCT}
+                  onClick={() => setZoomPct(pct - ZOOM_STEP)}
+                >
+                  −
+                </button>
+                <button
+                  type="button"
+                  className="plate-zoom-pct"
+                  data-tip={`Reset zoom to ${START_ZOOM_PCT}%`}
+                  onClick={() => setZoomPct(START_ZOOM_PCT)}
+                >
+                  {pct}%
+                </button>
+                <button
+                  type="button"
+                  className="plate-tool"
+                  data-tip={`Zoom in (${MIN_ZOOM_PCT}–${MAX_ZOOM_PCT}%)`}
+                  disabled={pct >= MAX_ZOOM_PCT}
+                  onClick={() => setZoomPct(pct + ZOOM_STEP)}
+                >
+                  +
+                </button>
+              </span>
+              <button type="button" className="plate-tool" data-tip="Fit the plate to the column" onClick={fitWidth}>
+                ⤢
+              </button>
+            </span>
+            <PaletteSelect
+              align="end"
+              value={state.wellPaletteId}
+              onChange={(paletteId) => dispatch({ type: 'set-well-palette', paletteId })}
+            />
           </span>
-          <button type="button" className="plate-tool" data-tip="Fit the plate to the column" onClick={fitWidth}>
-            ⤢
-          </button>
         </span>
       }
       defaultHeight={464}
@@ -176,12 +185,6 @@ export function Plate() {
               );
             })}
           </div>
-        </div>
-        <div className="plate-toolbar">
-          <PaletteSelect
-            value={state.wellPaletteId}
-            onChange={(paletteId) => dispatch({ type: 'set-well-palette', paletteId })}
-          />
         </div>
       </div>
     </Panel>

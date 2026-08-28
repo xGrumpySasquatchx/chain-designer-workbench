@@ -122,7 +122,7 @@ export function dim(hex: string): string {
 /** Label text inside a bar is black or white, whichever the fill can carry. */
 export function textOn(hex: string): string {
   const [r, g, b] = hexToRgb(hex);
-  return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.62 ? '#1A1A1A' : '#FFFFFF';
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.62 ? '#000000' : '#FFFFFF';
 }
 
 /**
