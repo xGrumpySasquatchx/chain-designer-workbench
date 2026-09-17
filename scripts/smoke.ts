@@ -830,9 +830,14 @@ check(
   shading('#FFFF00').top.toLowerCase().startsWith('#ffff'),
 );
 check('deselected content is half alpha over white', dim('#00B200') === '#80d980');
+// Asserted as the rule rather than the exact hex, so retuning the palette's
+// black or white does not break the check.
+const labelLuma = (hex: string) =>
+  [1, 3, 5].reduce((n, i) => n + parseInt(hex.slice(i, i + 2), 16), 0) / (3 * 255);
 check(
   'label text takes the readable side of its fill',
-  textOn('#FFFF00') === '#1A1A1A' && textOn('#00B200') === '#FFFFFF',
+  labelLuma(textOn('#FFFF00')) < 0.2 && labelLuma(textOn('#00B200')) > 0.8,
+  `${textOn('#FFFF00')} on yellow, ${textOn('#00B200')} on green`,
 );
 check('ruler numbers carry thousands separators', coordinate(6720) === '6,720');
 check(
