@@ -11,7 +11,7 @@ import { RegistryReview } from './components/RegistryReview';
 import { TooltipLayer } from './components/Tooltip';
 import { VariantGallery } from './components/VariantGallery';
 import { WorkList } from './components/WorkList';
-import { WorklistStrip } from './components/WorklistStrip';
+import { WorkSearch } from './components/WorkSearch';
 import { useApp, useDispatch } from './state/store';
 
 const RAIL_RANGE: [number, number] = [186, 460];
@@ -121,8 +121,8 @@ export default function App() {
         />
 
         <div className="column col-bench">
+          <WorkSearch />
           <WorkList />
-          <WorklistStrip />
           <Bench />
           <PepPanel />
         </div>

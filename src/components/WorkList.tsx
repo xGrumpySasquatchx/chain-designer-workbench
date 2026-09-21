@@ -1,260 +1,207 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Panel } from './Panel';
-import { locationLine, stockLine } from '../model/inventory';
-import {
-  matchLengthBp,
-  plateWorkItems,
-  workSummary,
-  type WorkItem,
-  type WorkStatus,
-} from '../model/worksearch';
+import { PaletteSelect } from './PaletteSelect';
+import { chainTarget } from '../model/bioglyph';
+import { flowState } from '../model/flow';
+import { componentColor, uniqueChainIds } from '../model/plate';
+import { COLORS, PART_LABELS, lengthIn } from '../model/parts';
+import { chainSegments, fasta, sequenceOf, sequenceRows, type Segment } from '../model/sequence';
+import { searchRegistry } from '../model/worksearch';
 import { useApp, useDispatch } from '../state/store';
-import type { PlateWell, QueuedPlate } from '../model/types';
+import type { Alphabet, ChainDesign } from '../model/types';
 
-const STATUS_LABEL: Record<WorkStatus, string> = {
-  registered: 'Registered',
-  assembled: 'Assembled',
-  new: 'New',
-};
-
-type Filter = 'all' | 'registered' | 'new';
-
-function basisLine(item: WorkItem): string {
-  switch (item.match.basis) {
-    case 'chain':
-      return 'registered from this bench chain';
-    case 'composition':
-      return 'matched on every component';
-    case 'v-region':
-      return 'matched on its variable region';
-    default:
-      return 'no match in the registry';
-  }
-}
-
-function itemTip(item: WorkItem, plate: QueuedPlate | undefined, sizeBp: number): string {
-  const where = `${item.wells.length} ${item.wells.length === 1 ? 'well' : 'wells'} on ${
-    plate ? `${plate.id} (${plate.barcode})` : item.plateId
-  }: ${item.wells.slice(0, 12).join(', ')}${item.wells.length > 12 ? '…' : ''}`;
-  const searched = `Searched the registry for ${item.match.query} — ${basisLine(item)}.`;
-  const found =
-    item.match.status === 'registered'
-      ? `${item.match.regId} maps to ${item.match.constructId} (${item.match.insertId} in ${
-          item.match.vectorId
-        }${sizeBp ? `, ${sizeBp.toLocaleString()} bp` : ''}). ${stockLine(
-          item.match.inventory,
-        )}, at ${locationLine(item.match.inventory)}.`
-      : item.match.status === 'assembled'
-        ? `${item.match.constructId} exists but was never checked into inventory, so there is nothing on a shelf yet.`
-        : 'Nothing in the registry matches, so this chain has to be built and registered.';
-  return `${item.name} · ${item.chainId}. ${where}. ${searched} ${found} Click to put it on the bench.`;
-}
-
-function matches(query: string, item: WorkItem): boolean {
-  if (!query.trim()) return true;
-  return [
-    item.name,
-    item.chainId,
-    item.target ?? '',
-    item.kind,
-    item.match.regId ?? '',
-    item.match.constructId ?? '',
-    item.match.insertId ?? '',
-    item.match.vectorId ?? '',
-    item.match.inventory?.location ?? '',
-    STATUS_LABEL[item.match.status],
-  ]
-    .join(' ')
-    .toLowerCase()
-    .includes(query.trim().toLowerCase());
-}
-
-function wellsForPlate(plate: QueuedPlate, livePlateId: string, liveWells: PlateWell[]): PlateWell[] {
-  return plate.id === livePlateId ? liveWells : plate.wells;
-}
+const PER_ROW = 60;
 
 /**
- * The work that was selected in the queue, chain by chain, after every one of
- * them has been searched against the registry. The question this answers is the
- * one that comes before any cloning: is this something we already have?
+ * The entities picked in the work list above, read out one by one with the
+ * sequence underneath each of them. Picking several is the point: a bispecific
+ * is three chains, and they are compared by reading them together.
  */
 export function WorkList() {
   const state = useApp();
-  const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<Filter>('all');
-
-  const plates = state.activePlateIds
-    .map((id) => state.plateQueue.find((p) => p.id === id))
-    .filter((p): p is QueuedPlate => !!p);
-
-  const items = useMemo(
-    () =>
-      plates.flatMap((plate) =>
-        plateWorkItems(
-          plate.id,
-          wellsForPlate(plate, state.activePlateId, state.plate),
-          state.chains,
-          state.registry,
-        ),
-      ),
-    [plates, state.activePlateId, state.plate, state.chains, state.registry],
-  );
-
-  const summary = workSummary(items);
-  const shown = items.filter((item) => {
-    if (filter === 'registered' && item.match.status !== 'registered') return false;
-    if (filter === 'new' && item.match.status === 'registered') return false;
-    return matches(query, item);
-  });
-
-  const many = plates.length > 1;
-  const title = many
-    ? `Work list · ${plates.length} selected`
-    : plates[0]
-      ? `Work list · ${plates[0].name}`
-      : 'Work list';
+  const dispatch = useDispatch();
+  const chains = state.workSelection
+    .map((id) => state.chains[id])
+    .filter((c): c is ChainDesign => !!c);
+  // Registered the way the list above counts it: what the registry has, not
+  // only what this bench chain already carries.
+  const registered = chains.filter(
+    (c) => searchRegistry(c, state.registry).status === 'registered',
+  ).length;
 
   return (
     <Panel
-      title={title}
-      tip="Every chain in the selected work, each one searched against the registry first: whether it already exists, the construct it maps to if it does, and what is left of it in the freezer."
+      title="Work List"
+      tip="The entities picked in the work list above, each read out to its sequence. Sequences are generated per building block rather than fetched, so they are stable and plausible, not real."
       trailing={
-        <span
-          data-tip={`${summary.total} chains searched · ${summary.registered} already registered · ${summary.assembled} assembled but not in inventory · ${summary.fresh} to build`}
-        >
-          {summary.registered}/{summary.total} registered
+        <span className="wl-trailing">
+          <span
+            data-tip={`${chains.length} ${chains.length === 1 ? 'entity' : 'entities'} picked · ${registered} registered. Cmd-click or shift-click rows above to gather more.`}
+          >
+            {`${registered} of ${chains.length} registered`}
+          </span>
+          <PaletteSelect
+            align="end"
+            value={state.wellPaletteId}
+            onChange={(paletteId) => dispatch({ type: 'set-well-palette', paletteId })}
+          />
         </span>
       }
-      defaultHeight={464}
+      defaultHeight={300}
     >
-      <input
-        className="search"
-        placeholder="Search chains, REG, CC, targets, freezer…"
-        data-tip="Filter this work list by chain name, identifier, target, status or freezer location"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-      />
-      <div className="seg full pq-filter" role="radiogroup" aria-label="Work list filter">
-        {(
-          [
-            ['all', `All ${summary.total}`],
-            ['registered', `Registered ${summary.registered}`],
-            ['new', `To build ${summary.assembled + summary.fresh}`],
-          ] as [Filter, string][]
-        ).map(([id, label]) => (
-          <button
-            key={id}
-            className={filter === id ? 'active' : ''}
-            data-tip={
-              id === 'all'
-                ? 'Every chain in the selected work'
-                : id === 'registered'
-                  ? 'Only chains the registry already has, with the construct and inventory behind them'
-                  : 'Only chains with nothing registered yet — the actual cloning to do'
-            }
-            onClick={() => setFilter(id)}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      <p className="wq-note">
-        Searched against the registry by components, not by name — {summary.total} chains,{' '}
-        {summary.registered} already on a shelf.
-      </p>
-
-      <div className="wq-list" role="list">
-        {shown.length === 0 && (
+      <div className="worklist">
+        {chains.length === 0 && (
           <p className="hint">
-            {items.length === 0
-              ? 'No work selected. Pick a row in the work queue.'
-              : 'Nothing in this work matches that search.'}
+            Nothing picked. Click an entity in the list above, or cmd-click several.
           </p>
         )}
-        {plates.map((plate) => {
-          const rows = shown.filter((item) => item.plateId === plate.id);
-          if (!rows.length) return null;
-          return (
-            <div key={plate.id} className="wq-group">
-              {many && (
-                <p className="wq-group-head">
-                  <span className="mono">{plate.id}</span> {plate.name}
-                  <span className="wq-group-count">{rows.length}</span>
-                </p>
-              )}
-              {rows.map((item) => (
-                <WorkRow key={`${plate.id}-${item.chainId}`} item={item} plate={plate} />
-              ))}
-            </div>
-          );
-        })}
+        {chains.map((chain) => (
+          <EntityCard key={chain.id} chain={chain} />
+        ))}
       </div>
     </Panel>
   );
 }
 
-function WorkRow({ item, plate }: { item: WorkItem; plate: QueuedPlate }) {
+function EntityCard({ chain }: { chain: ChainDesign }) {
   const state = useApp();
   const dispatch = useDispatch();
-  const sizeBp = matchLengthBp(item.match, state.registry);
-  const focused = state.focusChainId === item.chainId;
-  const { match } = item;
+  const [open, setOpen] = useState(true);
+  const [copied, setCopied] = useState(false);
+
+  const alphabet: Alphabet = state.alphabet;
+  const segments = chainSegments(chain, state.registry, alphabet);
+  const sequence = sequenceOf(segments);
+  const rows = sequenceRows(segments, PER_ROW);
+  const match = searchRegistry(chain, state.registry);
+  const flow = flowState(chain, state.registry);
+  const target = chainTarget(chain, state.registry);
+  const focused = state.focusChainId === chain.id;
+  const color = componentColor(
+    chain.id,
+    state.chains,
+    state.registry,
+    state.wellComponentColors,
+    state.wellPaletteId,
+    uniqueChainIds(state.plate),
+  );
+  const wells = state.plate.filter((w) => w.chainIds.includes(chain.id)).map((w) => w.id);
+
+  function copy() {
+    const name = `${chain.id} ${chain.name}${match.regId ? ` ${match.regId}` : ''}${
+      alphabet === 'aa' ? ' | protein' : ''
+    }`;
+    void navigator.clipboard?.writeText(fasta(name, sequence)).then(() => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    });
+  }
 
   return (
-    <button
-      type="button"
-      role="listitem"
-      className={`wq-row ${match.status}${focused ? ' focused' : ''}`}
-      data-tip={itemTip(item, plate, sizeBp)}
-      onClick={() => {
-        const well = item.wells[0];
-        if (well) dispatch({ type: 'select-wells', wellId: well, mode: 'single', plateId: item.plateId });
-        dispatch({ type: 'focus-chain', chainId: item.chainId });
-      }}
-    >
-      <span className={`wq-status ${match.status}`}>{STATUS_LABEL[match.status]}</span>
-
-      <span className="wq-name">
-        <span className="wq-chain">{item.name}</span>
-        <span className="wq-sub">
-          {item.chainId} · {item.kind}
-          {item.target ? ` · binds ${item.target}` : ''} · {basisLine(item)}
+    <div className={`ent${focused ? ' focused' : ''}`}>
+      <div className="ent-head">
+        <span className="ent-dot" style={{ background: color }} aria-hidden />
+        <button
+          type="button"
+          className="ent-name"
+          data-tip={`Focus ${chain.name} on the bench, the pad and the map. Next step: ${flow.next.label}.`}
+          onClick={() => {
+            dispatch({ type: 'focus-chain', chainId: chain.id });
+            dispatch({ type: 'select', id: chain.id, mode: 'single' });
+          }}
+        >
+          {chain.name}
+        </button>
+        <span className="ent-meta">
+          {chain.id} · {chain.kind}
+          {target ? ` · binds ${target}` : ''}
+          {wells.length ? ` · ${wells.length} ${wells.length === 1 ? 'well' : 'wells'}` : ''}
         </span>
-      </span>
+        <span
+          className={`ent-badge ${match.status}`}
+          data-tip={
+            match.status === 'registered'
+              ? `${match.regId} in inventory, from ${match.constructId}`
+              : match.status === 'assembled'
+                ? `${match.constructId} assembled, not yet registered`
+                : `Nothing registered yet. Next step: ${flow.next.label}.`
+          }
+        >
+          {match.regId ?? match.constructId ?? 'draft'}
+        </span>
+        <span className="ent-size">
+          {sequence.length
+            ? alphabet === 'aa'
+              ? `${sequence.length.toLocaleString()} aa`
+              : lengthIn(sequence.length, 'nt')
+            : 'no sequence'}
+        </span>
+        <button
+          type="button"
+          className="ent-tool"
+          disabled={!sequence.length}
+          data-tip={`Copy this ${alphabet === 'aa' ? 'protein' : 'DNA'} sequence as FASTA`}
+          onClick={copy}
+        >
+          {copied ? 'copied' : 'FASTA'}
+        </button>
+        <button
+          type="button"
+          className="ent-tool"
+          data-tip={open ? 'Hide the sequence' : 'Show the sequence'}
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
+        >
+          {open ? '▾' : '▸'}
+        </button>
+      </div>
 
-      <span className="wq-wells">
-        {item.wells.length}
-        <span className="wq-unit">{item.wells.length === 1 ? 'well' : 'wells'}</span>
-      </span>
-
-      <span className="wq-map">
-        {match.status === 'new' ? (
-          <span className="wq-none">no construct yet</span>
+      {open &&
+        (segments.length === 0 ? (
+          <p className="ent-empty">
+            {alphabet === 'aa' && chain.slots.some((s) => s.blockIds.length)
+              ? 'Only regulatory elements are chosen, and those have no protein to read. Switch to nucleotide view.'
+              : 'No components chosen yet, so there is nothing to sequence.'}
+          </p>
         ) : (
           <>
-            <span className="wq-ids">{match.regId ?? match.constructId}</span>
-            <span className="wq-sub">
-              {match.regId ? `${match.constructId} · ` : ''}
-              {match.insertId} in {match.vectorId}
-              {sizeBp ? ` · ${sizeBp.toLocaleString()} bp` : ''}
-            </span>
+            <div className="ent-segs">
+              {segments.map((segment) => (
+                <SegmentChip key={`${segment.blockId}-${segment.start}`} segment={segment} alphabet={alphabet} />
+              ))}
+            </div>
+            <div className="seq" role="img" aria-label={`${chain.name} sequence, ${sequence.length} residues`}>
+              {rows.map((row) => (
+                <div className="seq-row" key={row.start}>
+                  <span className="seq-pos">{row.start.toLocaleString()}</span>
+                  <span className="seq-bases">
+                    {row.parts.map((part, i) => (
+                      <span key={i} style={{ color: COLORS[part.type] }}>
+                        {part.text}
+                      </span>
+                    ))}
+                  </span>
+                </div>
+              ))}
+            </div>
           </>
-        )}
-      </span>
+        ))}
+    </div>
+  );
+}
 
-      <span className="wq-stock">
-        {match.status === 'registered' ? (
-          <>
-            <span className="wq-amount">{stockLine(match.inventory)}</span>
-            <span className="wq-sub">{locationLine(match.inventory)}</span>
-          </>
-        ) : (
-          <span className="wq-none">
-            {match.status === 'assembled' ? 'not in inventory' : 'to build and register'}
-          </span>
-        )}
+function SegmentChip({ segment, alphabet }: { segment: Segment; alphabet: Alphabet }) {
+  const unit = alphabet === 'aa' ? 'aa' : 'bp';
+  return (
+    <span
+      className="ent-seg"
+      style={{ color: COLORS[segment.type], borderColor: COLORS[segment.type] }}
+      data-tip={`${segment.blockName} (${segment.blockId}) — ${PART_LABELS[segment.type]}, ${segment.start.toLocaleString()}–${segment.end.toLocaleString()} of the chain, ${(segment.end - segment.start + 1).toLocaleString()} ${unit}`}
+    >
+      {PART_LABELS[segment.type]}
+      <span className="ent-seg-range">
+        {segment.start.toLocaleString()}–{segment.end.toLocaleString()}
       </span>
-    </button>
+    </span>
   );
 }

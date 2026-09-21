@@ -86,6 +86,9 @@ export interface AppState {
   activePlateId: string;
   selectedWells: string[];
   lastSelectedWellId: string | null;
+  /** Entities picked in the work list, read with their sequence below it. */
+  workSelection: string[];
+  lastWorkSelectedId: string | null;
   /** User overrides for how molecule elements colour on the plate. */
   wellComponentColors: Record<string, string>;
   /** Preset palette assigned to well components, in plate order. */
@@ -120,6 +123,21 @@ export type Action =
   | { type: 'rename-chain'; chainId: string; name: string }
   | { type: 'select-wells'; wellId: string; mode: 'single' | 'toggle' | 'range'; plateId?: string }
   | { type: 'open-queue-plate'; plateId: string; mode?: 'single' | 'toggle' | 'range' }
+  /**
+   * Pick entities out of the work list. A plain click puts one on the bench;
+   * cmd- and shift-click gather several to read side by side without moving
+   * the bench off what is being designed.
+   */
+  | {
+      type: 'select-work';
+      chainId: string;
+      mode: 'single' | 'toggle' | 'range';
+      /** The list as displayed, so a shift-range means what the eye means. */
+      order: string[];
+      /** Where the entity sits, for the single-click trip to the bench. */
+      wellId?: string;
+      plateId?: string;
+    }
   | { type: 'set-well-color'; chainId: string; color: string }
   | { type: 'reset-well-colors' }
   | { type: 'set-well-palette'; paletteId: string }
@@ -178,6 +196,8 @@ export function createInitialState(): AppState {
     activePlateId: active.id,
     selectedWells: ['A1'],
     lastSelectedWellId: 'A1',
+    workSelection: plate[0].chainIds,
+    lastWorkSelectedId: plate[0].chainIds[0] ?? null,
     wellComponentColors: {},
     wellPaletteId: DEFAULT_PALETTE_ID,
     bench: benchFromChainIds(plate[0].chainIds),
@@ -277,6 +297,9 @@ function applyWellSelection(state: AppState, wellIds: string[], lastId: string):
     format: primary?.format ?? state.format,
     selection: [],
     lastSelectedId: null,
+    // Changing which wells are in play changes what there is to read.
+    workSelection: chainIds,
+    lastWorkSelectedId: chainIds[0] ?? null,
     focusChainId: chainIds.includes(state.focusChainId)
       ? state.focusChainId
       : (chainIds.find((id) => state.chains[id]?.kind === 'heavy') ?? chainIds[0] ?? state.focusChainId),
@@ -743,6 +766,51 @@ export function reducer(state: AppState, action: Action): AppState {
         wellIds = [action.wellId];
       }
       return applyWellSelection(next, wellIds, action.wellId);
+    }
+
+    case 'select-work': {
+      if (!state.chains[action.chainId]) return state;
+      const order = action.order.length ? action.order : [action.chainId];
+
+      if (action.mode === 'toggle') {
+        const chosen = state.workSelection.includes(action.chainId)
+          ? state.workSelection.filter((id) => id !== action.chainId)
+          : [...state.workSelection, action.chainId];
+        const kept = chosen.length ? chosen : [action.chainId];
+        return {
+          ...state,
+          workSelection: order.filter((id) => kept.includes(id)),
+          lastWorkSelectedId: action.chainId,
+        };
+      }
+
+      if (action.mode === 'range' && state.lastWorkSelectedId) {
+        const from = order.indexOf(state.lastWorkSelectedId);
+        const to = order.indexOf(action.chainId);
+        if (from >= 0 && to >= 0) {
+          return {
+            ...state,
+            workSelection: order.slice(Math.min(from, to), Math.max(from, to) + 1),
+            lastWorkSelectedId: action.chainId,
+          };
+        }
+      }
+
+      // A plain click is the one that moves the bench with it.
+      const next = action.wellId
+        ? reducer(state, {
+            type: 'select-wells',
+            wellId: action.wellId,
+            mode: 'single',
+            plateId: action.plateId,
+          })
+        : state;
+      return {
+        ...next,
+        workSelection: [action.chainId],
+        lastWorkSelectedId: action.chainId,
+        focusChainId: action.chainId,
+      };
     }
 
     case 'remove-chain': {

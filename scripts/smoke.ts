@@ -38,6 +38,14 @@ import {
 } from '../src/model/mapview';
 import { locationLine, stockLine } from '../src/model/inventory';
 import { lightChainMode, moleculeReadiness } from '../src/model/molecule';
+import {
+  blockSequence,
+  chainSegments,
+  fasta,
+  sequenceOf,
+  sequenceRows,
+  translate,
+} from '../src/model/sequence';
 import { plateWorkItems, workSummary, type WorkItem } from '../src/model/worksearch';
 import { uniqueChainIds, wellRange, lumaUid, wellElementColors, componentColor } from '../src/model/plate';
 import { DEFAULT_PALETTE_ID, PLATE_PALETTES, wellPieBackground } from '../src/model/palettes';
@@ -487,6 +495,136 @@ check(
   'work that is only half filled lists only the chains it actually uses',
   otherWork.length < work.length && otherWork.every((i) => i.plateId === 'PLT-0002'),
   `${otherWork.length} chains on PLT-0002`,
+);
+
+console.log('\n— picking entities out of the work list —');
+const listOrder = work.map((i) => i.chainId);
+check(
+  'the open work starts with the wells on the bench picked',
+  plate0.workSelection.join(',') === plate0.plate[0].chainIds.join(','),
+  plate0.workSelection.join(', '),
+);
+const onePick = run(plate0, {
+  type: 'select-work',
+  chainId: 'CH-0008',
+  mode: 'single',
+  order: listOrder,
+  wellId: 'F1',
+  plateId: 'PLT-0001',
+});
+check(
+  'a plain click reads one entity and takes it to the bench',
+  onePick.workSelection.join(',') === 'CH-0008' &&
+    onePick.focusChainId === 'CH-0008' &&
+    onePick.selectedWells.join(',') === 'F1',
+);
+const twoPicks = run(onePick, {
+  type: 'select-work',
+  chainId: 'CH-0011',
+  mode: 'toggle',
+  order: listOrder,
+});
+check(
+  'cmd-click gathers a second entity without moving the bench',
+  twoPicks.workSelection.length === 2 &&
+    twoPicks.workSelection.includes('CH-0008') &&
+    twoPicks.selectedWells.join(',') === 'F1',
+);
+check(
+  'gathered entities stay in the order they are listed',
+  twoPicks.workSelection.join(',') === listOrder.filter((id) => twoPicks.workSelection.includes(id)).join(','),
+  twoPicks.workSelection.join(', '),
+);
+const untoggled = run(twoPicks, {
+  type: 'select-work',
+  chainId: 'CH-0011',
+  mode: 'toggle',
+  order: listOrder,
+});
+check('cmd-clicking a picked entity drops it again', untoggled.workSelection.join(',') === 'CH-0008');
+const ranged = run(
+  run(plate0, { type: 'select-work', chainId: listOrder[1], mode: 'single', order: listOrder, wellId: 'A1' }),
+  { type: 'select-work', chainId: listOrder[4], mode: 'range', order: listOrder },
+);
+check(
+  'shift-click takes the span between the two, as listed',
+  ranged.workSelection.join(',') === listOrder.slice(1, 5).join(','),
+  ranged.workSelection.join(', '),
+);
+const movedOn = run(ranged, { type: 'select-wells', wellId: 'C4', mode: 'single' });
+check(
+  'opening different wells refreshes what there is to read',
+  movedOn.workSelection.join(',') ===
+    movedOn.plate.find((w) => w.id === 'C4')!.chainIds.join(','),
+);
+
+console.log('\n— every entity has sequence underneath it —');
+const lightChain = plate0.chains[LIGHT];
+const ntSegments = chainSegments(lightChain, plate0.registry, 'nt');
+const ntSeq = sequenceOf(ntSegments);
+check(
+  'a chain reads out component by component, in slot order',
+  ntSegments.map((s) => s.type).join(',') === 'promoter,vl,cl,term',
+  ntSegments.map((s) => s.type).join(', '),
+);
+check(
+  'segment coordinates are contiguous and cover the whole chain',
+  ntSegments.every((s, i) => s.start === (i === 0 ? 1 : ntSegments[i - 1].end + 1)) &&
+    ntSegments[ntSegments.length - 1].end === ntSeq.length,
+  `${ntSeq.length} bp`,
+);
+check(
+  'the sequence is the sum of the building blocks it is made of',
+  ntSeq.length ===
+    lightChain.slots.reduce(
+      (n, s) => n + (s.blockIds[0] ? plate0.registry.blocks[s.blockIds[0]].lengthBp : 0),
+      0,
+    ),
+);
+check('sequence is DNA and nothing else', /^[ACGT]+$/.test(ntSeq));
+check(
+  'the same building block reads the same wherever it is used',
+  blockSequence(plate0.registry.blocks['BB-0010']) === blockSequence(plate0.registry.blocks['BB-0010']) &&
+    blockSequence(plate0.registry.blocks['BB-0010']) !== blockSequence(plate0.registry.blocks['BB-0011']),
+);
+const heavyVh = plate0.registry.blocks['BB-0010'];
+check(
+  'a coding region translates end to end without running into a stop',
+  !translate(blockSequence(heavyVh)).includes('*'),
+  `${translate(blockSequence(heavyVh)).slice(0, 12)}…`,
+);
+const aaSegments = chainSegments(lightChain, plate0.registry, 'aa');
+check(
+  'amino acid view drops the regulatory elements, as the parts rail does',
+  aaSegments.map((s) => s.type).join(',') === 'vl,cl',
+);
+check(
+  'each coding stretch is translated in its own frame',
+  aaSegments.every(
+    (s) => s.seq.length === plate0.registry.blocks[s.blockId].lengthBp / 3,
+  ),
+);
+const wrapped = sequenceRows(ntSegments, 60);
+check(
+  'the sequence wraps into numbered rows of sixty',
+  wrapped[0].start === 1 &&
+    wrapped[1].start === 61 &&
+    wrapped.every((r) => r.parts.reduce((n, p) => n + p.text.length, 0) <= 60),
+);
+check(
+  'rows break at component boundaries so each stretch keeps its colour',
+  wrapped.flatMap((r) => r.parts.map((p) => p.text)).join('') === ntSeq,
+);
+check(
+  'an empty chain has nothing to read',
+  chainSegments(plate0.chains[HEAVY_B], plate0.registry, 'nt').length === 0,
+);
+const exported = fasta(`${LIGHT} ${lightChain.name}`, ntSeq);
+check(
+  'a picked entity can leave as FASTA',
+  exported.startsWith(`>${LIGHT} ${lightChain.name}\n`) &&
+    exported.split('\n')[1].length === 60 &&
+    exported.replace(/^>.*\n/, '').replace(/\n/g, '') === ntSeq,
 );
 
 console.log('\n— resolution is a view setting —');
