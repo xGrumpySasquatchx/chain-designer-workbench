@@ -590,6 +590,19 @@ check(
   'a gathered span is what the bench works on',
   ranged.bench.map((n) => n.id).join(',') === ranged.workSelection.join(','),
 );
+const orphanOrder = listOrder.slice(10, 15);
+const rangedOffList = run(ranged, {
+  type: 'select-work',
+  chainId: orphanOrder[2],
+  mode: 'range',
+  order: orphanOrder,
+});
+check(
+  'shift-click still gathers when the earlier anchor is off the visible list',
+  rangedOffList.workSelection.join(',') === orphanOrder.slice(0, 3).join(',') &&
+    rangedOffList.bench.map((n) => n.id).join(',') === orphanOrder.slice(0, 3).join(','),
+  rangedOffList.workSelection.join(', '),
+);
 const movedOn = run(ranged, { type: 'select-wells', wellId: 'C4', mode: 'single' });
 check(
   'opening a different well resets the working set to that molecule',

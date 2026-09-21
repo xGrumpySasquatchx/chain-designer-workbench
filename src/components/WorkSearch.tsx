@@ -229,14 +229,28 @@ function WorkRow({ item, plate, order }: { item: WorkItem; plate: QueuedPlate; o
       aria-pressed={picked}
       className={`wq-row ${match.status}${focused ? ' focused' : ''}${picked ? ' picked' : ''}`}
       data-tip={itemTip(item, plate, sizeBp)}
-      onMouseDown={(e) => {
-        if (e.shiftKey) e.preventDefault();
-      }}
-      onClick={(e) => {
+      onPointerDown={(e) => {
+        if (e.button !== 0) return;
+        if (!(e.shiftKey || e.metaKey || e.ctrlKey)) return;
+        e.preventDefault();
         dispatch({
           type: 'select-work',
           chainId: item.chainId,
-          mode: e.shiftKey ? 'range' : e.metaKey || e.ctrlKey ? 'toggle' : 'single',
+          mode: e.shiftKey ? 'range' : 'toggle',
+          order,
+          wellId: item.wells[0],
+          plateId: item.plateId,
+        });
+      }}
+      onClick={(e) => {
+        if (e.shiftKey || e.metaKey || e.ctrlKey) {
+          e.preventDefault();
+          return;
+        }
+        dispatch({
+          type: 'select-work',
+          chainId: item.chainId,
+          mode: 'single',
           order,
           wellId: item.wells[0],
           plateId: item.plateId,

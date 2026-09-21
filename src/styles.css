@@ -840,6 +840,7 @@ body.resizing-v .panel-grip::after {
   background: var(--surface-2);
   color: var(--text-primary);
   cursor: pointer;
+  user-select: none;
 }
 
 .wq-row:hover {

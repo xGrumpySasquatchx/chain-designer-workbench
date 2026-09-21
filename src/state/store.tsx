@@ -126,7 +126,8 @@ export type Action =
   /**
    * Pick entities out of the work list. A plain click opens the well the
    * entity sits in, so the whole molecule comes to the bench; cmd- and
-   * shift-click gather entities across wells onto the bench instead.
+   * shift-click gather entities onto the bench instead, and a shift-range
+   * never falls back to opening a single well.
    */
   | {
       type: 'select-work';
@@ -795,12 +796,19 @@ export function reducer(state: AppState, action: Action): AppState {
         return gather(order.filter((id) => kept.includes(id)));
       }
 
-      if (action.mode === 'range' && state.lastWorkSelectedId) {
-        const from = order.indexOf(state.lastWorkSelectedId);
+      if (action.mode === 'range') {
+        const anchor =
+          (state.lastWorkSelectedId && order.includes(state.lastWorkSelectedId)
+            ? state.lastWorkSelectedId
+            : state.workSelection.find((id) => order.includes(id))) ??
+          order[0] ??
+          action.chainId;
+        const from = order.indexOf(anchor);
         const to = order.indexOf(action.chainId);
         if (from >= 0 && to >= 0) {
           return gather(order.slice(Math.min(from, to), Math.max(from, to) + 1));
         }
+        return gather([action.chainId]);
       }
 
       // A plain click opens the well the entity sits in, so the molecule it
