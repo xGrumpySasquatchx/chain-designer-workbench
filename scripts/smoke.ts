@@ -497,13 +497,29 @@ check(
   `${otherWork.length} chains on PLT-0002`,
 );
 
-console.log('\n— picking entities out of the work list —');
+console.log('\n— selecting work reaches the list and the bench —');
 const listOrder = work.map((i) => i.chainId);
 check(
-  'the open work starts with the wells on the bench picked',
-  plate0.workSelection.join(',') === plate0.plate[0].chainIds.join(','),
+  'the list marks exactly what the bench is holding',
+  plate0.workSelection.join(',') === plate0.bench.map((n) => n.id).join(','),
   plate0.workSelection.join(', '),
 );
+const switched = run(plate0, { type: 'open-queue-plate', plateId: 'PLT-0002' });
+check(
+  'selecting other work lists that work instead',
+  plateWorkItems('PLT-0002', switched.plate, switched.chains, switched.registry)
+    .map((i) => i.chainId)
+    .join(',') === otherWork.map((i) => i.chainId).join(','),
+  `${otherWork.length} entities on PLT-0002`,
+);
+check(
+  'and brings the first molecule of that work to the bench',
+  switched.bench.map((n) => n.id).join(',') ===
+    switched.plate.find((w) => w.chainIds.length)!.chainIds.join(',') &&
+    switched.workSelection.join(',') === switched.bench.map((n) => n.id).join(','),
+);
+
+console.log('\n— picking entities out of the work list —');
 const onePick = run(plate0, {
   type: 'select-work',
   chainId: 'CH-0008',
@@ -513,10 +529,16 @@ const onePick = run(plate0, {
   plateId: 'PLT-0001',
 });
 check(
-  'a plain click reads one entity and takes it to the bench',
-  onePick.workSelection.join(',') === 'CH-0008' &&
-    onePick.focusChainId === 'CH-0008' &&
-    onePick.selectedWells.join(',') === 'F1',
+  'a plain click brings that entity\u2019s whole molecule to the bench',
+  onePick.focusChainId === 'CH-0008' &&
+    onePick.selectedWells.join(',') === 'F1' &&
+    onePick.bench.map((n) => n.id).join(',') ===
+      onePick.plate.find((w) => w.id === 'F1')!.chainIds.join(','),
+);
+check(
+  'and the list marks the molecule it brought, not only the row clicked',
+  onePick.workSelection.join(',') === onePick.bench.map((n) => n.id).join(','),
+  onePick.workSelection.join(', '),
 );
 const twoPicks = run(onePick, {
   type: 'select-work',
@@ -525,14 +547,16 @@ const twoPicks = run(onePick, {
   order: listOrder,
 });
 check(
-  'cmd-click gathers a second entity without moving the bench',
-  twoPicks.workSelection.length === 2 &&
-    twoPicks.workSelection.includes('CH-0008') &&
-    twoPicks.selectedWells.join(',') === 'F1',
+  'cmd-click gathers entities across wells onto the bench',
+  twoPicks.workSelection.includes('CH-0011') &&
+    twoPicks.bench.map((n) => n.id).join(',') === twoPicks.workSelection.join(',') &&
+    twoPicks.focusChainId === 'CH-0011',
+  twoPicks.workSelection.join(', '),
 );
 check(
   'gathered entities stay in the order they are listed',
-  twoPicks.workSelection.join(',') === listOrder.filter((id) => twoPicks.workSelection.includes(id)).join(','),
+  twoPicks.workSelection.join(',') ===
+    listOrder.filter((id) => twoPicks.workSelection.includes(id)).join(','),
   twoPicks.workSelection.join(', '),
 );
 const untoggled = run(twoPicks, {
@@ -541,9 +565,20 @@ const untoggled = run(twoPicks, {
   mode: 'toggle',
   order: listOrder,
 });
-check('cmd-clicking a picked entity drops it again', untoggled.workSelection.join(',') === 'CH-0008');
+check(
+  'cmd-clicking a gathered entity drops it, and the bench with it',
+  !untoggled.workSelection.includes('CH-0011') &&
+    !untoggled.bench.some((n) => n.id === 'CH-0011') &&
+    untoggled.focusChainId !== 'CH-0011',
+);
 const ranged = run(
-  run(plate0, { type: 'select-work', chainId: listOrder[1], mode: 'single', order: listOrder, wellId: 'A1' }),
+  run(plate0, {
+    type: 'select-work',
+    chainId: listOrder[1],
+    mode: 'single',
+    order: listOrder,
+    wellId: 'A1',
+  }),
   { type: 'select-work', chainId: listOrder[4], mode: 'range', order: listOrder },
 );
 check(
@@ -551,11 +586,15 @@ check(
   ranged.workSelection.join(',') === listOrder.slice(1, 5).join(','),
   ranged.workSelection.join(', '),
 );
+check(
+  'a gathered span is what the bench works on',
+  ranged.bench.map((n) => n.id).join(',') === ranged.workSelection.join(','),
+);
 const movedOn = run(ranged, { type: 'select-wells', wellId: 'C4', mode: 'single' });
 check(
-  'opening different wells refreshes what there is to read',
-  movedOn.workSelection.join(',') ===
-    movedOn.plate.find((w) => w.id === 'C4')!.chainIds.join(','),
+  'opening a different well resets the working set to that molecule',
+  movedOn.workSelection.join(',') === movedOn.plate.find((w) => w.id === 'C4')!.chainIds.join(',') &&
+    movedOn.bench.map((n) => n.id).join(',') === movedOn.workSelection.join(','),
 );
 
 console.log('\n— every entity has sequence underneath it —');

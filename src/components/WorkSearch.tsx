@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Panel } from './Panel';
+import { PaletteSelect } from './PaletteSelect';
 import { locationLine, stockLine } from '../model/inventory';
+import { componentColor, uniqueChainIds } from '../model/plate';
 import {
   matchLengthBp,
   plateWorkItems,
@@ -47,7 +49,7 @@ function itemTip(item: WorkItem, plate: QueuedPlate | undefined, sizeBp: number)
       : item.match.status === 'assembled'
         ? `${item.match.constructId} exists but was never checked into inventory, so there is nothing on a shelf yet.`
         : 'Nothing in the registry matches, so this chain has to be built and registered.';
-  return `${item.name} · ${item.chainId}. ${where}. ${searched} ${found} Click to put it on the bench and read it below; cmd-click to add it to the Work List, shift-click for a range.`;
+  return `${item.name} · ${item.chainId}. ${where}. ${searched} ${found} Click to bring its molecule to the bench; cmd-click to add this entity to the bench, shift-click for a range.`;
 }
 
 function matches(query: string, item: WorkItem): boolean {
@@ -78,11 +80,13 @@ function wellsForPlate(plate: QueuedPlate, livePlateId: string, liveWells: Plate
  * them has been searched against the registry. The question this answers is the
  * one that comes before any cloning: is this something we already have?
  *
- * Picking rows here decides what the Work List below reads out: a plain click
- * takes one entity to the bench, cmd- and shift-click gather several.
+ * Picking rows here decides what the bench works on: a plain click opens the
+ * well the entity sits in, so its whole molecule comes across, and cmd- or
+ * shift-click gathers entities from anywhere in the job onto the bench.
  */
 export function WorkSearch() {
   const state = useApp();
+  const dispatch = useDispatch();
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
 
@@ -111,19 +115,26 @@ export function WorkSearch() {
   });
 
   const order = shown.map((item) => item.chainId);
-  const picked = state.workSelection.filter((id) => order.includes(id)).length;
+  const onBench = state.workSelection.filter((id) => order.includes(id)).length;
   const many = plates.length > 1;
   const title = many ? `Selected work · ${plates.length} jobs` : (plates[0]?.name ?? 'Selected work');
 
   return (
     <Panel
       title={title}
-      tip="Every chain in the selected work, each one searched against the registry first: whether it already exists, the construct it maps to if it does, and what is left of it in the freezer. Click an entity to take it to the bench; cmd-click or shift-click to gather several into the Work List below."
+      tip="Every chain in the selected work, each one searched against the registry first: whether it already exists, the construct it maps to if it does, and what is left of it in the freezer. Click an entity to bring its molecule to the bench; cmd-click or shift-click to gather entities across wells onto the bench."
       trailing={
-        <span
-          data-tip={`${summary.total} chains searched · ${summary.registered} already registered · ${summary.assembled} assembled but not in inventory · ${summary.fresh} to build. ${picked} picked for the Work List below.`}
-        >
-          {summary.registered}/{summary.total} registered · {picked} picked
+        <span className="wl-trailing">
+          <span
+            data-tip={`${summary.total} chains searched · ${summary.registered} already registered · ${summary.assembled} assembled but not in inventory · ${summary.fresh} to build. ${onBench} of them are on the bench.`}
+          >
+            {summary.registered}/{summary.total} registered · {onBench} on the bench
+          </span>
+          <PaletteSelect
+            align="end"
+            value={state.wellPaletteId}
+            onChange={(paletteId) => dispatch({ type: 'set-well-palette', paletteId })}
+          />
         </span>
       }
       defaultHeight={464}
@@ -202,6 +213,14 @@ function WorkRow({ item, plate, order }: { item: WorkItem; plate: QueuedPlate; o
   const focused = state.focusChainId === item.chainId;
   const picked = state.workSelection.includes(item.chainId);
   const { match } = item;
+  const color = componentColor(
+    item.chainId,
+    state.chains,
+    state.registry,
+    state.wellComponentColors,
+    state.wellPaletteId,
+    uniqueChainIds(state.plate),
+  );
 
   return (
     <button
@@ -227,7 +246,10 @@ function WorkRow({ item, plate, order }: { item: WorkItem; plate: QueuedPlate; o
       <span className={`wq-status ${match.status}`}>{STATUS_LABEL[match.status]}</span>
 
       <span className="wq-name">
-        <span className="wq-chain">{item.name}</span>
+        <span className="wq-chain">
+          <span className="wq-dot" style={{ background: color }} aria-hidden />
+          {item.name}
+        </span>
         <span className="wq-sub">
           {item.chainId} · {item.kind}
           {item.target ? ` · binds ${item.target}` : ''} · {basisLine(item)}

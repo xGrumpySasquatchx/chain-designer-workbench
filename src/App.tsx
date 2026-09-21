@@ -10,7 +10,6 @@ import { RegistryRail } from './components/RegistryRail';
 import { RegistryReview } from './components/RegistryReview';
 import { TooltipLayer } from './components/Tooltip';
 import { VariantGallery } from './components/VariantGallery';
-import { WorkList } from './components/WorkList';
 import { WorkSearch } from './components/WorkSearch';
 import { useApp, useDispatch } from './state/store';
 
@@ -122,7 +121,6 @@ export default function App() {
 
         <div className="column col-bench">
           <WorkSearch />
-          <WorkList />
           <Bench />
           <PepPanel />
         </div>

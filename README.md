@@ -19,9 +19,9 @@ npm run lint
 
 ## What it does
 
-- **Work queue, selected work, work list** — the day's work; the chains each job is made of after
-  they have been searched against the registry (already registered, assembled but not in inventory,
-  or new); and the entities picked out of that, read down to their sequence. See below.
+- **Work queue and work list** — the day's work, and the chains each job is made of after they have
+  been searched against the registry: already registered, assembled but not in inventory, or new.
+  Picking entities there is what puts chains on the bench. See below.
 - **Parts registry rail** (left) — searchable by name, feature and target, tabbed by Regions /
   Inserts / Vectors, filtered for compatibility against whatever the focused chain has already
   committed to. Nothing is selected by typing an ID. A **nucleotide / amino-acid toggle** decides
@@ -61,7 +61,7 @@ npm run lint
   disabled button says what is missing rather than just being grey, a part says how to place it, and
   the colour legend doubles as the glossary of part types.
 
-## Work queue, selected work, work list
+## Work queue and work list
 
 The **Work Queue** on the left is the day's work, searchable and filterable. Selecting a row opens
 that job in the centre, titled by its name: one row per chain the work is made of, deduplicated, so a
@@ -84,19 +84,12 @@ The search is by composition, not by name, so a chain drawn this morning and a c
 quarter come back as the same chain. Matching by every component is preferred to matching on the
 variable region alone, and the row says which of the two it was.
 
-**Work List** below reads out whatever is picked above. A plain click takes one entity to the bench,
-which the pad, the map and QC follow; cmd-click and shift-click gather several so they can be read
-together — a bispecific is three chains, and they are compared by reading them side by side. Each
-entity shows its identity, where it stands with the registry, its size, its components as coloured
-stretches with their coordinates, and the sequence itself, wrapped and numbered in rows of sixty and
-coloured by the component each stretch comes from. The nucleotide / amino-acid toggle applies here
-too: in amino acid view the regulatory elements drop out and each coding stretch is translated in its
-own frame. `FASTA` copies the entity as it is being read.
-
-Sequences are **generated, not real**: deterministic per `BB-id`, so one building block reads the same
-everywhere it is used and a chain survives a reload unchanged, with coding regions built codon by
-codon so a chain translates end to end without hitting a stop. They stand in for a sequence service,
-and nobody should order oligos against them.
+Picking rows decides what the bench works on, and the rows marked as such are exactly what the bench
+is holding. A plain click opens the well the entity sits in, so its whole molecule comes across and
+the pad has a format to draw; cmd-click and shift-click gather entities from anywhere in the job onto
+the bench instead — a bispecific is three chains, and they are worked on together. The colour dot on
+each row is the colour that entity takes wherever molecules are drawn, and the palette control in the
+panel header changes the set.
 
 ## Design pad — BioGlyph conventions
 
@@ -303,14 +296,15 @@ src/model/      types, seeded registry, colors, combinatorics, QC, cloning-loop 
                 molecule.ts (light-chain choice, molecule identity and readiness),
                 worksearch.ts (searching selected work against the registry),
                 inventory.ts (how stock and freezer location are said),
-                sequence.ts (generated per-block sequence, translation, wrapping, FASTA),
+                sequence.ts (generated per-block sequence, translation, wrapping, FASTA —
+                  modelled and checked, not yet surfaced in a panel),
                 dpad.ts (measured pad geometry, domain outlines, target colour slots),
                 geneious.ts (annotation and coordinate model for both map views),
                 mapview.ts (measured map geometry, gradient shading, selection dimming)
 src/state/      reducer, contexts, provider — all session state lives here
-src/components/ work queue, selected work (WorkSearch), work list with sequence (WorkList),
-                registry rail, bench rows and slots, design pad, construct map, flow diagram,
-                QC panel, variant gallery, registration review, activity log
+src/components/ work queue, work list (WorkSearch), registry rail, bench rows and slots,
+                design pad, construct map, flow diagram, QC panel, variant gallery,
+                registration review, activity log
 scripts/smoke.ts headless walk through the loop, run with `npm run smoke`
 ```
 
@@ -320,9 +314,11 @@ scripts/smoke.ts headless walk through the loop, run with `npm run smoke`
   bench-session vs. committed-record decision is still open.
 - **Real registry API.** The registry is seeded in `src/model/registry.ts` behind the same shapes a
   service would return, so swapping in a client is a single-module change.
-- **Real sequences.** The sequence under each entity is generated from its `BB-id` rather than
-  fetched, so it is stable and readable but not real: there is no junction-level checking on the map,
-  no residue-level zoom on the pad, and nothing to order oligos against.
+- **Real sequences.** `sequence.ts` gives every building block a sequence generated from its `BB-id`
+  — stable, translatable, and not real — with chain-level assembly, translation, wrapping and FASTA
+  on top of it. It is checked by the smoke suite but no panel shows it at the moment, and until a
+  sequence service backs it there is no junction-level checking on the map or residue-level zoom on
+  the pad.
 - **Nested groups.** Grouping is one level deep, pending the group-nesting-depth decision.
 - **More than two arms.** The pad scaffold is two arms and an Fc; appended arms and tandem fusions
   beyond a single tag per arm are not modelled.

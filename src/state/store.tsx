@@ -86,7 +86,7 @@ export interface AppState {
   activePlateId: string;
   selectedWells: string[];
   lastSelectedWellId: string | null;
-  /** Entities picked in the work list, read with their sequence below it. */
+  /** Entities picked out of the work list; the bench works on exactly these. */
   workSelection: string[];
   lastWorkSelectedId: string | null;
   /** User overrides for how molecule elements colour on the plate. */
@@ -124,9 +124,9 @@ export type Action =
   | { type: 'select-wells'; wellId: string; mode: 'single' | 'toggle' | 'range'; plateId?: string }
   | { type: 'open-queue-plate'; plateId: string; mode?: 'single' | 'toggle' | 'range' }
   /**
-   * Pick entities out of the work list. A plain click puts one on the bench;
-   * cmd- and shift-click gather several to read side by side without moving
-   * the bench off what is being designed.
+   * Pick entities out of the work list. A plain click opens the well the
+   * entity sits in, so the whole molecule comes to the bench; cmd- and
+   * shift-click gather entities across wells onto the bench instead.
    */
   | {
       type: 'select-work';
@@ -772,31 +772,39 @@ export function reducer(state: AppState, action: Action): AppState {
       if (!state.chains[action.chainId]) return state;
       const order = action.order.length ? action.order : [action.chainId];
 
+      /** Several entities picked at once are several rows to work on. */
+      const gather = (ids: string[]): AppState => ({
+        ...state,
+        workSelection: ids,
+        lastWorkSelectedId: action.chainId,
+        bench: benchFromChainIds(ids),
+        selection: [],
+        lastSelectedId: null,
+        focusChainId: ids.includes(action.chainId)
+          ? action.chainId
+          : ids.includes(state.focusChainId)
+            ? state.focusChainId
+            : (ids[0] ?? state.focusChainId),
+      });
+
       if (action.mode === 'toggle') {
         const chosen = state.workSelection.includes(action.chainId)
           ? state.workSelection.filter((id) => id !== action.chainId)
           : [...state.workSelection, action.chainId];
         const kept = chosen.length ? chosen : [action.chainId];
-        return {
-          ...state,
-          workSelection: order.filter((id) => kept.includes(id)),
-          lastWorkSelectedId: action.chainId,
-        };
+        return gather(order.filter((id) => kept.includes(id)));
       }
 
       if (action.mode === 'range' && state.lastWorkSelectedId) {
         const from = order.indexOf(state.lastWorkSelectedId);
         const to = order.indexOf(action.chainId);
         if (from >= 0 && to >= 0) {
-          return {
-            ...state,
-            workSelection: order.slice(Math.min(from, to), Math.max(from, to) + 1),
-            lastWorkSelectedId: action.chainId,
-          };
+          return gather(order.slice(Math.min(from, to), Math.max(from, to) + 1));
         }
       }
 
-      // A plain click is the one that moves the bench with it.
+      // A plain click opens the well the entity sits in, so the molecule it
+      // belongs to comes across whole and the pad has a format to draw.
       const next = action.wellId
         ? reducer(state, {
             type: 'select-wells',
@@ -804,10 +812,9 @@ export function reducer(state: AppState, action: Action): AppState {
             mode: 'single',
             plateId: action.plateId,
           })
-        : state;
+        : { ...state, workSelection: [action.chainId], bench: benchFromChainIds([action.chainId]) };
       return {
         ...next,
-        workSelection: [action.chainId],
         lastWorkSelectedId: action.chainId,
         focusChainId: action.chainId,
       };
