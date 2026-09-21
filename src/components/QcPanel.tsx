@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Panel } from './Panel';
 import { flowState } from '../model/flow';
 import { variantCount } from '../model/combinatorics';
+import { locationLine, stockLine } from '../model/inventory';
 import { runFormatQc } from '../model/qc';
 import { useApp, useDispatch } from '../state/store';
 
@@ -129,16 +130,11 @@ export function QcPanel() {
               </div>
               <div className="kv">
                 <span>Location</span>
-                <span>{reg.inventory.location}</span>
+                <span>{locationLine(reg.inventory)}</span>
               </div>
               <div className="kv">
                 <span>Plasmid</span>
-                <span>
-                  {reg.inventory.plasmidUg
-                    ? `${reg.inventory.plasmidUg} µg`
-                    : 'none prepped yet'}
-                  {reg.inventory.glycerolStock ? ' · glycerol stock' : ''}
-                </span>
+                <span>{stockLine(reg.inventory)}</span>
               </div>
             </div>
           ))}

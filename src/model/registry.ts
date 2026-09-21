@@ -291,6 +291,53 @@ export function initialRegistry(): Registry {
   VECTOR_LIST.forEach((v) => (registry.vectors[v.id] = v));
   INSERT_LIST.forEach((i) => (registry.inserts[i.id] = i));
 
+  // Work registered in earlier campaigns. The work list searches against these,
+  // so a chain coming off a plate can come back as something already on a shelf
+  // rather than as something new to clone.
+  registry.constructs['CC-0002'] = {
+    id: 'CC-0002',
+    insertId: 'INS-0001',
+    vectorId: 'VEC-0001',
+    chainName: 'anti-HER2 heavy (IgG1)',
+    createdAt: EARLIER,
+  };
+  registry.registered['REG-0002'] = {
+    id: 'REG-0002',
+    constructId: 'CC-0002',
+    chainName: 'anti-HER2 heavy (IgG1)',
+    registeredAt: EARLIER,
+    inventory: {
+      location: 'Freezer B / rack 2 / box 7',
+      position: 'C3',
+      volumeUl: 240,
+      concentrationNgUl: 620,
+      plasmidUg: 149,
+      glycerolStock: true,
+    },
+  };
+
+  registry.constructs['CC-0003'] = {
+    id: 'CC-0003',
+    insertId: 'INS-0003',
+    vectorId: 'VEC-0001',
+    chainName: 'anti-CD3 heavy (knob)',
+    createdAt: EARLIER,
+  };
+  registry.registered['REG-0003'] = {
+    id: 'REG-0003',
+    constructId: 'CC-0003',
+    chainName: 'anti-CD3 heavy (knob)',
+    registeredAt: EARLIER,
+    inventory: {
+      location: 'Freezer B / rack 2 / box 9',
+      position: 'A11',
+      volumeUl: 45,
+      concentrationNgUl: 310,
+      plasmidUg: 14,
+      glycerolStock: false,
+    },
+  };
+
   // A universal light chain someone registered earlier. It sits in inventory as
   // something this design can draw on, not as a light chain it already uses.
   registry.constructs['CC-0001'] = {
@@ -306,7 +353,14 @@ export function initialRegistry(): Registry {
     chainName: 'Universal light chain',
     chainId: 'CH-0001',
     registeredAt: EARLIER,
-    inventory: { location: 'Freezer B / rack 4 / box 12', plasmidUg: 480, glycerolStock: true },
+    inventory: {
+      location: 'Freezer B / rack 4 / box 12',
+      position: 'D6',
+      volumeUl: 600,
+      concentrationNgUl: 800,
+      plasmidUg: 480,
+      glycerolStock: true,
+    },
   };
   return registry;
 }
@@ -315,8 +369,8 @@ export const INITIAL_COUNTERS: Counters = {
   BB: 111,
   INS: 3,
   VEC: 4,
-  CC: 1,
-  REG: 1,
+  CC: 3,
+  REG: 3,
   CH: 21,
   GRP: 0,
   FMT: 0,
@@ -359,8 +413,9 @@ export function initialChains(): ChainDesign[] {
     heavyWithVh('CH-0010', 'anti-CD20 heavy', 'BB-0014'),
   ];
 
+  // Column two onwards: the first column is the unfinished CD3 arm, so these
+  // line up with colNames from its second entry.
   const colVhs = [
-    'BB-0012',
     'BB-0010',
     'BB-0011',
     'BB-0013',
@@ -371,6 +426,7 @@ export function initialChains(): ChainDesign[] {
     'BB-0013',
     'BB-0014',
     'BB-0012',
+    'BB-0010',
   ];
   const colNames = [
     'CD3 arm (heavy)',

@@ -16,10 +16,10 @@ type Filter = 'all' | 'remaining' | 'done';
 
 function rowTip(plate: QueuedPlate, filled: number, isOpen: boolean, isPrimary: boolean): string {
   const action = isPrimary
-    ? 'On the bench. Cmd-click to keep it while adding others, or click another row to replace it.'
+    ? 'Selected. Its chains are listed against the registry. Cmd-click to keep it while adding others, or click another row to replace it.'
     : isOpen
-      ? `Open in the plate view. Click a well to work it on the bench.`
-      : `Click to open ${plate.id} on the bench. Cmd-click to add it beside the plates already open; shift-click to open a range.`;
+      ? `Selected alongside other work. Click one of its chains in the work list to put it on the bench.`
+      : `Click to select ${plate.id} and list its chains. Cmd-click to add it beside the work already selected; shift-click to select a range.`;
   return `${plate.barcode} · ${plate.program} · ${plate.formatLabel}. ${filled} of ${plate.wellCount} wells filled. Due ${plate.due}. ${plate.note}. ${action}.`;
 }
 
@@ -41,14 +41,14 @@ export function PlateQueue() {
 
   return (
     <Panel
-      title="Plate queue"
-      tip="Today’s plates as a searchable worklist. Click a row to open that plate. Cmd-click to add or remove plates in the view; shift-click to open a range so you can scroll through them in bulk."
+      title="Work Queue"
+      tip="Today’s work as a searchable list. Click a row to select that work and list its chains against the registry. Cmd-click to add or remove work in the view; shift-click to select a range."
       trailing={`${remaining} remaining`}
       defaultHeight={220}
     >
       <input
         className="search"
-        placeholder="Search plates, barcodes, programs…"
+        placeholder="Search work, barcodes, programs…"
         data-tip="Filter the queue by plate id, barcode, program, operator, format or due time"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
@@ -66,10 +66,10 @@ export function PlateQueue() {
             className={filter === id ? 'active' : ''}
             data-tip={
               id === 'all'
-                ? 'Show every plate in today’s queue'
+                ? 'Show everything in today’s work queue'
                 : id === 'remaining'
-                  ? 'Hide plates that are already signed off'
-                  : 'Show only finished plates'
+                  ? 'Hide work that is already signed off'
+                  : 'Show only finished work'
             }
             onClick={() => setFilter(id)}
           >
@@ -79,7 +79,7 @@ export function PlateQueue() {
       </div>
 
       <div className="pq-list" role="list">
-        {rows.length === 0 && <p className="hint">No plates match that search.</p>}
+        {rows.length === 0 && <p className="hint">No work matches that search.</p>}
         {rows.map((plate) => {
           const filled = wellsFilled(plate.id === state.activePlateId ? state.plate : plate.wells);
           const isPrimary = plate.id === state.activePlateId;

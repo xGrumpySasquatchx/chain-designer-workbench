@@ -1,4 +1,5 @@
 import { Panel } from './Panel';
+import { PaletteSelect } from './PaletteSelect';
 import { flowState } from '../model/flow';
 import { variantCount } from '../model/combinatorics';
 import { componentColor, uniqueChainIds, wellCaption } from '../model/plate';
@@ -20,7 +21,16 @@ export function WorklistStrip() {
     <Panel
       title="Worklist"
       tip="One row per selected well. Each row is the Luma molecule and the chain elements that make it up."
-      trailing={`${registered} of ${wells.length} registered`}
+      trailing={
+        <span className="wl-trailing">
+          <span>{`${registered} of ${wells.length} registered`}</span>
+          <PaletteSelect
+            align="end"
+            value={state.wellPaletteId}
+            onChange={(paletteId) => dispatch({ type: 'set-well-palette', paletteId })}
+          />
+        </span>
+      }
       defaultHeight={168}
     >
       <div className="worklist">

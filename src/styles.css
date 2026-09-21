@@ -785,6 +785,154 @@ body.resizing-v .panel-grip::after {
   font-family: inherit;
 }
 
+/* ---------- work list ---------- */
+
+.wq-note {
+  margin: 0 0 8px;
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+
+.wq-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 0;
+  overflow: auto;
+}
+
+.wq-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wq-group + .wq-group {
+  margin-top: 8px;
+}
+
+.wq-group-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0;
+  padding: 2px 2px 0;
+  font-size: 10.5px;
+  color: var(--text-secondary);
+}
+
+.wq-group-count {
+  margin-left: auto;
+  color: var(--text-muted);
+}
+
+.wq-row {
+  display: grid;
+  grid-template-columns: 74px minmax(0, 1.6fr) 52px minmax(0, 1.15fr) minmax(0, 1.35fr);
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  border: 0.5px solid var(--border);
+  border-left-width: 2px;
+  border-radius: var(--radius);
+  padding: 6px 8px;
+  background: var(--surface-2);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.wq-row:hover {
+  border-color: var(--border-strong);
+}
+
+.wq-row.registered {
+  border-left-color: var(--text-pass);
+}
+
+.wq-row.assembled {
+  border-left-color: var(--text-warning);
+}
+
+.wq-row.new {
+  border-left-color: var(--border-accent);
+}
+
+.wq-row.focused {
+  box-shadow: 0 0 0 1.5px var(--fill-accent);
+}
+
+.wq-status {
+  justify-self: start;
+  font-size: 9px;
+  font-weight: 300;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-radius: 999px;
+  padding: 3px 6px;
+  white-space: nowrap;
+}
+
+.wq-status.registered {
+  background: var(--bg-pass);
+  color: var(--text-pass);
+}
+
+.wq-status.assembled {
+  background: var(--bg-warning);
+  color: var(--text-warning);
+}
+
+.wq-status.new {
+  background: var(--bg-accent);
+  color: var(--text-accent);
+}
+
+.wq-name,
+.wq-map,
+.wq-stock {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.wq-chain,
+.wq-ids,
+.wq-amount {
+  font-size: 12px;
+  font-weight: 300;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wq-sub {
+  font-size: 10px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wq-wells {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  font-size: 12px;
+  font-weight: 300;
+}
+
+.wq-unit {
+  font-size: 9.5px;
+  color: var(--text-muted);
+}
+
+.wq-none {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
 /* ---------- worklist ---------- */
 
 .worklist {
@@ -856,6 +1004,12 @@ body.resizing-v .panel-grip::after {
 .wl-element-id {
   opacity: 0.8;
   font-size: 9.5px;
+}
+
+.wl-trailing {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .wl-caption {

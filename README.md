@@ -19,6 +19,9 @@ npm run lint
 
 ## What it does
 
+- **Work queue and work list** — the day's work, and the chains each job is made of after they have
+  been searched against the registry: already registered, assembled but not in inventory, or new. See
+  below.
 - **Parts registry rail** (left) — searchable by name, feature and target, tabbed by Regions /
   Inserts / Vectors, filtered for compatibility against whatever the focused chain has already
   committed to. Nothing is selected by typing an ID. A **nucleotide / amino-acid toggle** decides
@@ -57,6 +60,30 @@ npm run lint
 - **Tooltips everywhere.** Controls explain themselves on hover or keyboard focus, in context: a
   disabled button says what is missing rather than just being grey, a part says how to place it, and
   the colour legend doubles as the glossary of part types.
+
+## Work queue and work list
+
+The **Work Queue** on the left is the day's work, searchable and filterable. Selecting a row puts that
+work in the **work list** in the centre: one row per chain the work is made of, deduplicated, so a
+common light chain in every well is one thing to deal with rather than ninety-six. Cmd-click keeps
+several jobs in the list at once and shift-click takes a range; the list groups them by job.
+
+Nothing appears in that list until it has been searched against the registry, and each row is the
+answer to that search:
+
+- **Registered** — the registry already has this chain, either because the bench chain carries its own
+  `REG-id`, because a construct was built from exactly these components, or because a construct was
+  built from the same variable region in another backbone. The row names the `REG-id`, the `CC-id` it
+  maps to, the insert and backbone behind it, and what is left in the freezer: volume, concentration,
+  total plasmid, glycerol stock and the box and position it sits in.
+- **Assembled** — a construct exists but was never checked into inventory, so there is a `CC-id` and
+  nothing on a shelf.
+- **New** — nothing matches, so this one has to be built and registered.
+
+The search is by composition, not by name, so a chain drawn this morning and a chain registered last
+quarter come back as the same chain. Matching by every component is preferred to matching on the
+variable region alone, and the row says which of the two it was. Clicking a row selects the well it
+comes from and puts the chain on the bench, which the pad, the map and QC follow.
 
 ## Design pad — BioGlyph conventions
 
@@ -261,12 +288,15 @@ to the taxonomy above.
 src/model/      types, seeded registry, colors, combinatorics, QC, cloning-loop state machine,
                 bioglyph.ts (building blocks, connectivity, symmetry, format identity),
                 molecule.ts (light-chain choice, molecule identity and readiness),
+                worksearch.ts (searching selected work against the registry),
+                inventory.ts (how stock and freezer location are said),
                 dpad.ts (measured pad geometry, domain outlines, target colour slots),
                 geneious.ts (annotation and coordinate model for both map views),
                 mapview.ts (measured map geometry, gradient shading, selection dimming)
 src/state/      reducer, contexts, provider — all session state lives here
-src/components/ registry rail, bench rows and slots, design pad, construct map, flow diagram,
-                QC panel, worklist, variant gallery, registration review, activity log
+src/components/ work queue, work list, registry rail, bench rows and slots, design pad,
+                construct map, flow diagram, QC panel, worklist, variant gallery,
+                registration review, activity log
 scripts/smoke.ts headless walk through the loop, run with `npm run smoke`
 ```
 

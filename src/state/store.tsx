@@ -645,6 +645,9 @@ export function reducer(state: AppState, action: Action): AppState {
               registeredAt: Date.now(),
               inventory: {
                 location: `Freezer B / rack 4 / box ${12 + i}`,
+                position: 'unassigned',
+                volumeUl: 0,
+                concentrationNgUl: 0,
                 plasmidUg: 0,
                 glycerolStock: false,
               },

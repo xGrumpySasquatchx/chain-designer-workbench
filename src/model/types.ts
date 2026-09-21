@@ -96,6 +96,19 @@ export interface Construct {
   createdAt: number;
 }
 
+/** What is physically on the shelf for a registered chain. */
+export interface InventoryRecord {
+  /** Freezer, rack and box. */
+  location: string;
+  /** Position within the box, so the tube can actually be found. */
+  position: string;
+  volumeUl: number;
+  concentrationNgUl: number;
+  /** Total plasmid on hand; volume times concentration. */
+  plasmidUg: number;
+  glycerolStock: boolean;
+}
+
 export interface RegisteredChain {
   id: string;
   constructId: string;
@@ -103,11 +116,7 @@ export interface RegisteredChain {
   /** The bench chain it came from, so a registration can be reviewed in place. */
   chainId?: string;
   registeredAt: number;
-  inventory: {
-    location: string;
-    plasmidUg: number;
-    glycerolStock: boolean;
-  };
+  inventory: InventoryRecord;
 }
 
 /**

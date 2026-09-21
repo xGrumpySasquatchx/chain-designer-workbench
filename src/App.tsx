@@ -4,13 +4,13 @@ import { Bench } from './components/Bench';
 import { ConstructMap } from './components/ConstructMap';
 import { DesignPad } from './components/DesignPad';
 import { PepPanel } from './components/PepPanel';
-import { Plate } from './components/Plate';
 import { PlateQueue } from './components/PlateQueue';
 import { QcPanel } from './components/QcPanel';
 import { RegistryRail } from './components/RegistryRail';
 import { RegistryReview } from './components/RegistryReview';
 import { TooltipLayer } from './components/Tooltip';
 import { VariantGallery } from './components/VariantGallery';
+import { WorkList } from './components/WorkList';
 import { WorklistStrip } from './components/WorklistStrip';
 import { useApp, useDispatch } from './state/store';
 
@@ -116,12 +116,12 @@ export default function App() {
 
         <ColResizer
           area="res-rail"
-          tip="Drag to widen or narrow the plate queue and parts registry column"
+          tip="Drag to widen or narrow the work queue and parts registry column"
           onDelta={(dx) => setRailWidth((w) => clamp(w + dx, RAIL_RANGE))}
         />
 
         <div className="column col-bench">
-          <Plate />
+          <WorkList />
           <WorklistStrip />
           <Bench />
           <PepPanel />

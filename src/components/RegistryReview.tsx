@@ -1,6 +1,7 @@
 import { COLORS, PART_LABELS, lengthIn } from '../model/parts';
 import { textOn } from '../model/mapview';
 import { insertLengthBp } from '../model/combinatorics';
+import { locationLine, stockLine } from '../model/inventory';
 import { useApp, useDispatch } from '../state/store';
 import type { PartType, RegisteredChain } from '../model/types';
 
@@ -126,14 +127,11 @@ export function RegistryReview() {
         </div>
         <div className="kv">
           <span>Inventory</span>
-          <span>{reg.inventory.location}</span>
+          <span>{locationLine(reg.inventory)}</span>
         </div>
         <div className="kv">
           <span>Stock</span>
-          <span>
-            {reg.inventory.plasmidUg ? `${reg.inventory.plasmidUg} µg plasmid` : 'no plasmid prepped'}
-            {reg.inventory.glycerolStock ? ' · glycerol stock' : ''}
-          </span>
+          <span>{stockLine(reg.inventory)}</span>
         </div>
         <div className="kv">
           <span>Used in</span>

@@ -36,7 +36,9 @@ import {
   textOn,
   truncate,
 } from '../src/model/mapview';
+import { locationLine, stockLine } from '../src/model/inventory';
 import { lightChainMode, moleculeReadiness } from '../src/model/molecule';
+import { plateWorkItems, workSummary, type WorkItem } from '../src/model/worksearch';
 import { uniqueChainIds, wellRange, lumaUid, wellElementColors, componentColor } from '../src/model/plate';
 import { DEFAULT_PALETTE_ID, PLATE_PALETTES, wellPieBackground } from '../src/model/palettes';
 import { inAlphabet, lengthIn } from '../src/model/parts';
@@ -385,6 +387,106 @@ check(
   'placing a V region on a New chain names it',
   namedNew.chains[newId].name === 'anti-EGFR heavy',
   namedNew.chains[newId].name,
+);
+
+console.log('\n— selected work is searched against the registry before it is listed —');
+const work = plateWorkItems('PLT-0001', plate0.plate, plate0.chains, plate0.registry);
+const itemFor = (items: WorkItem[], chainId: string) => items.find((i) => i.chainId === chainId)!;
+check(
+  'the selected work lists every chain it is made of, once each',
+  work.length === uniqueChainIds(plate0.plate).length &&
+    new Set(work.map((i) => i.chainId)).size === work.length,
+  `${work.length} chains`,
+);
+check(
+  'a chain in every well is one thing to clone, not ninety-six',
+  itemFor(work, LIGHT).wells.length === 96,
+);
+check('every listed chain carries a search result', work.every((i) => !!i.match.status));
+const lightHit = itemFor(work, LIGHT).match;
+check(
+  'the universal light chain comes back registered, from its own REG-id',
+  lightHit.status === 'registered' && lightHit.basis === 'chain' && lightHit.regId === 'REG-0001',
+);
+check(
+  'a registered hit maps to the construct behind it',
+  lightHit.constructId === 'CC-0001' && lightHit.insertId === 'INS-0002' && lightHit.vectorId === 'VEC-0003',
+);
+check(
+  'a registered hit carries what is left in the freezer',
+  lightHit.inventory?.volumeUl === 600 &&
+    lightHit.inventory?.plasmidUg === 480 &&
+    locationLine(lightHit.inventory) === 'Freezer B / rack 4 / box 12 / D6',
+  stockLine(lightHit.inventory),
+);
+const misnamed = work.find((i) => i.name.startsWith('anti-') && !i.name.includes(i.target ?? '·'));
+check(
+  'a chain on the plate carries the V region its name claims',
+  !misnamed,
+  misnamed ? `${misnamed.name} binds ${misnamed.target}` : 'all aligned',
+);
+const her2 = itemFor(work, 'CH-0008').match;
+check(
+  'a binder registered in an earlier campaign is found by its V region, not its name',
+  her2.status === 'registered' && her2.basis === 'v-region' && her2.regId === 'REG-0002',
+  `${her2.regId} · ${her2.query}`,
+);
+check(
+  'that hit brings its own inventory, low volume and all',
+  her2.inventory?.volumeUl === 240 && her2.constructId === 'CC-0002',
+);
+const cd20 = itemFor(work, 'CH-0005').match;
+check('a binder nobody has registered comes back new', cd20.status === 'new' && cd20.basis === 'none');
+check(
+  'an empty chain is searched too, and says so',
+  itemFor(work, HEAVY).match.status === 'new' &&
+    itemFor(work, HEAVY).match.query === 'nothing chosen yet',
+);
+const workSum = workSummary(work);
+check(
+  'the summary counts what is already on a shelf against what has to be built',
+  workSum.total === work.length && workSum.registered + workSum.assembled + workSum.fresh === workSum.total,
+  `${workSum.registered} registered, ${workSum.fresh} to build`,
+);
+const assembledOnly = run(
+  plate0,
+  { type: 'place-block', chainId: 'CH-0005', slotIndex: plate0.chains['CH-0005'].slots.findIndex((s) => s.type === 'vh'), blockId: 'BB-0014' },
+  { type: 'set-vector', chainId: 'CH-0005', vectorId: 'VEC-0001' },
+  { type: 'assemble', chainId: 'CH-0005' },
+);
+const assembledHit = itemFor(
+  plateWorkItems('PLT-0001', assembledOnly.plate, assembledOnly.chains, assembledOnly.registry),
+  'CH-0005',
+).match;
+check(
+  'a construct with no registration behind it is assembled, not registered',
+  assembledHit.status === 'assembled' && !!assembledHit.constructId && !assembledHit.regId,
+  assembledHit.constructId,
+);
+const registeredNow = run(assembledOnly, { type: 'register', chainId: 'CH-0005' });
+const registeredHit = itemFor(
+  plateWorkItems('PLT-0001', registeredNow.plate, registeredNow.chains, registeredNow.registry),
+  'CH-0005',
+).match;
+check(
+  'registering it moves the same row to registered',
+  registeredHit.status === 'registered' && !!registeredHit.regId,
+  registeredHit.regId,
+);
+check(
+  'a chain registered in this session has no material prepped yet',
+  stockLine(registeredHit.inventory) === 'registered, none prepped yet',
+);
+const otherWork = plateWorkItems(
+  'PLT-0002',
+  plate0.plateQueue.find((p) => p.id === 'PLT-0002')!.wells,
+  plate0.chains,
+  plate0.registry,
+);
+check(
+  'work that is only half filled lists only the chains it actually uses',
+  otherWork.length < work.length && otherWork.every((i) => i.plateId === 'PLT-0002'),
+  `${otherWork.length} chains on PLT-0002`,
 );
 
 console.log('\n— resolution is a view setting —');
