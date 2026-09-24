@@ -7,6 +7,6 @@ import react from '@vitejs/plugin-react'
 // Keying on mode rather than command keeps `vite preview` serving the built
 // bundle from the same prefix it was built with.
 export default defineConfig(({ mode }) => ({
-  base: mode === 'production' ? '/chain-designer-workbench/' : '/',
+  base: mode === 'production' ? '/chain-designer-workbench-v1/' : '/',
   plugins: [react()],
 }))
