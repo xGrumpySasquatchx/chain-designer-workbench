@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
 import { Panel } from './Panel';
-import { PaletteSelect } from './PaletteSelect';
 import { locationLine, stockLine } from '../model/inventory';
 import { componentColor, uniqueChainIds } from '../model/plate';
 import {
@@ -86,7 +85,6 @@ function wellsForPlate(plate: QueuedPlate, livePlateId: string, liveWells: Plate
  */
 export function WorkSearch() {
   const state = useApp();
-  const dispatch = useDispatch();
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
 
@@ -130,11 +128,6 @@ export function WorkSearch() {
           >
             {summary.registered}/{summary.total} registered · {onBench} on the bench
           </span>
-          <PaletteSelect
-            align="end"
-            value={state.wellPaletteId}
-            onChange={(paletteId) => dispatch({ type: 'set-well-palette', paletteId })}
-          />
         </span>
       }
       defaultHeight={464}
